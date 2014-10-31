@@ -1,0 +1,10 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: libetnaviv
+Description: Userspace interface to kernel galcore driver 
+Version: @PACKAGE_VERSION@
+Libs: -L${libdir} -letnaviv
+Cflags: -I${includedir}/etnaviv
