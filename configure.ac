@@ -1,5 +1,5 @@
 AC_PREREQ([2.63])
-AC_INIT([libetnaviv], [2.0.0], [], [libetnaviv])
+AC_INIT([libetnaviv], [1.0.0], [], [libetnaviv])
 
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CONFIG_MACRO_DIR([m4])
