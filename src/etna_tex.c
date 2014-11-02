@@ -1,4 +1,4 @@
-#include <etnaviv/etna_tex.h>
+#include <etna_tex.h>
 
 #include <stdint.h>
 #include <stdio.h>

@@ -20,9 +20,9 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#include <etnaviv/etna_bo.h>
-#include <etnaviv/etna.h>
-#include <etnaviv/etna_queue.h>
+#include <etna_bo.h>
+#include <etna.h>
+#include <etna_queue.h>
 
 #include <string.h>
 #include <stdlib.h>

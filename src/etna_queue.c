@@ -1,6 +1,6 @@
-#include <etnaviv/etna_queue.h>
-#include <etnaviv/etna.h>
-#include <etnaviv/viv.h>
+#include <etna_queue.h>
+#include <etna.h>
+#include <viv.h>
 
 #include "gc_abi.h"
 #include "viv_internal.h"

@@ -20,8 +20,8 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#include <etnaviv/viv.h>
-#include <etnaviv/etna_util.h>
+#include <viv.h>
+#include <etna_util.h>
 
 #include <unistd.h>
 #include <stdlib.h>

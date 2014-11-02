@@ -20,11 +20,11 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#include <etnaviv/etna_rs.h>
-#include <etnaviv/etna_tex.h>
-#include <etnaviv/etna.h>
-#include <etnaviv/state.xml.h>
-#include <etnaviv/state_3d.xml.h>
+#include <etna_rs.h>
+#include <etna_tex.h>
+#include <etna.h>
+#include <state.xml.h>
+#include <state_3d.xml.h>
 
 #include <assert.h>
 //#define DEBUG

@@ -1,6 +1,6 @@
-#include <etnaviv/viv_profile.h>
+#include <viv_profile.h>
 
-#include <etnaviv/viv.h>
+#include <viv.h>
 
 #include "gc_abi.h"
 

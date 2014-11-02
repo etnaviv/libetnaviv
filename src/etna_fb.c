@@ -20,9 +20,9 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#include <etnaviv/etna_fb.h>
-#include <etnaviv/state.xml.h>
-#include <etnaviv/state_3d.xml.h>
+#include <etna_fb.h>
+#include <state.xml.h>
+#include <state_3d.xml.h>
 
 #include <stdio.h>
 #include <unistd.h>
