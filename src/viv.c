@@ -327,6 +327,34 @@ error:
     return err;
 }
 
+#ifdef GCABI_VIRTUAL_COMMAND_BUFFERS
+/* For now we'll just pretent it's contiguous memory, it doesn't matter as it's
+ * only used for command buffers.
+ */
+int viv_alloc_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t *physical, void **logical, size_t *bytes_out)
+{
+    gcsHAL_INTERFACE id = {
+        .command = gcvHAL_ALLOCATE_VIRTUAL_COMMAND_BUFFER,
+        .u = {
+            .AllocateVirtualCommandBuffer = {
+                .bytes = bytes
+            }
+        }
+    };
+    int rv = viv_invoke(conn, &id);
+    if(rv != gcvSTATUS_OK)
+    {
+        *physical = 0;
+        *logical = 0;
+        return rv;
+    }
+    *physical = (viv_addr_t) id.u.AllocateVirtualCommandBuffer.physical;
+    *logical = VIV_TO_PTR(id.u.AllocateVirtualCommandBuffer.logical);
+    if(bytes_out)
+        *bytes_out = id.u.AllocateVirtualCommandBuffer.bytes;
+    return gcvSTATUS_OK;
+}
+#else
 int viv_alloc_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t *physical, void **logical, size_t *bytes_out)
 {
     gcsHAL_INTERFACE id = {
@@ -350,6 +378,7 @@ int viv_alloc_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t *physic
         *bytes_out = id.u.AllocateContiguousMemory.bytes;
     return gcvSTATUS_OK;
 }
+#endif
 
 int viv_alloc_linear_vidmem(struct viv_conn *conn, size_t bytes, size_t alignment, enum viv_surf_type type, enum viv_pool pool, viv_node_t *node, size_t *bytes_out)
 {
@@ -590,6 +619,25 @@ int viv_free_vidmem(struct viv_conn *conn, viv_node_t node, bool submit_as_event
     }
 }
 
+#ifdef GCABI_VIRTUAL_COMMAND_BUFFERS
+/* For now we'll just pretent it's contiguous memory, it doesn't matter as it's
+ * only used for command buffers.
+ */
+int viv_free_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t physical, void *logical)
+{
+    gcsHAL_INTERFACE id = {
+        .command = gcvHAL_FREE_VIRTUAL_COMMAND_BUFFER,
+        .u = {
+            .FreeVirtualCommandBuffer = {
+                .bytes = bytes,
+                .physical = PTR_TO_VIV(physical),
+                .logical = PTR_TO_VIV(logical)
+            }
+        }
+    };
+    return viv_invoke(conn, &id);
+}
+#else
 int viv_free_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t physical, void *logical)
 {
     gcsHAL_INTERFACE id = {
@@ -604,6 +652,7 @@ int viv_free_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t physical
     };
     return viv_invoke(conn, &id);
 }
+#endif
 
 int viv_map_dmabuf(struct viv_conn *conn, int fd, viv_usermem_t *info, viv_addr_t *address, int prot)
 {
