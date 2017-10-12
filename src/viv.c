@@ -490,6 +490,14 @@ int viv_commit(struct viv_conn *conn, struct _gcoCMDBUF *commandBuffer, viv_cont
             }
         }
     };
+#ifdef GCABI_MULTI_COMMIT
+    id.u.Commit.index = 0;
+    id.u.Commit.count = 1;
+    id.u.Commit.commandBuffers[0] = PTR_TO_VIV(commandBuffer);
+    id.u.Commit.contexts[0] = HANDLE_TO_VIV(context);
+    id.u.Commit.deltas[0] = PTR_TO_VIV(&fake_delta);
+    id.u.Commit.engine1 = gcvENGINE_RENDER; /* As the blob does */
+#endif
 
     return viv_invoke(conn, &id);
 }
