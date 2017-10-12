@@ -129,8 +129,8 @@ int etna_create(struct viv_conn *conn, struct etna_ctx **ctx_out)
         }
         ctx->cmdbuf[x]->object.type = gcvOBJ_COMMANDBUFFER;
 #ifdef GCABI_CMDBUF_HAS_PHYSICAL
-        ctx->cmdbuf[x]->physical = PTR_TO_VIV((void*)etna_bo_gpu_address(ctx->cmdbufi[x].bo));
-        ctx->cmdbuf[x]->bytes = ctx->cmdbufi[x].bytes;
+        ctx->cmdbuf[x]->physical = etna_bo_gpu_address(ctx->cmdbufi[x].bo);
+        ctx->cmdbuf[x]->bytes = etna_bo_size(ctx->cmdbufi[x].bo);
 #endif
         ctx->cmdbuf[x]->logical = PTR_TO_VIV((void*)etna_bo_map(ctx->cmdbufi[x].bo));
 
