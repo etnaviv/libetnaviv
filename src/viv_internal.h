@@ -36,9 +36,7 @@ static inline gceSURF_TYPE convert_surf_type(enum viv_surf_type type)
     case VIV_SURF_DEPTH: return gcvSURF_DEPTH;
     case VIV_SURF_BITMAP: return gcvSURF_BITMAP;
     case VIV_SURF_TILE_STATUS: return gcvSURF_TILE_STATUS;
-#ifndef GCABI_HAS_CONTEXT
     case VIV_SURF_IMAGE: return gcvSURF_IMAGE;
-#endif
     case VIV_SURF_MASK: return gcvSURF_MASK;
     case VIV_SURF_SCISSOR: return gcvSURF_SCISSOR;
     case VIV_SURF_HIERARCHICAL_DEPTH: return gcvSURF_HIERARCHICAL_DEPTH;

@@ -260,7 +260,6 @@ int viv_open(enum viv_hw_type hw_type, struct viv_conn **out)
     if((err=conn->fd) < 0)
         goto error;
 
-#ifdef GCABI_HAS_STATE_DELTAS
     /* Determine version */
     id.command = gcvHAL_VERSION;
     if((err=viv_invoke(conn, &id)) != gcvSTATUS_OK)
@@ -269,15 +268,6 @@ int viv_open(enum viv_hw_type hw_type, struct viv_conn **out)
     conn->kernel_driver.minor = id.u.Version.minor;
     conn->kernel_driver.patch = id.u.Version.patch;
     conn->kernel_driver.build = id.u.Version.build;
-#else
-    /* <=v2 drivers don't have an always available mechanism for getting the driver version,
-     * although in some (like dove) a /proc file is available that gives the version.
-     */
-    conn->kernel_driver.major = 2;
-    conn->kernel_driver.minor = 0;
-    conn->kernel_driver.patch = 0;
-    conn->kernel_driver.build = 0;
-#endif
     snprintf(conn->kernel_driver.name, sizeof(conn->kernel_driver.name),
             "Vivante GPL kernel driver %i.%i.%i.%i",
             conn->kernel_driver.major, conn->kernel_driver.minor,
@@ -434,28 +424,6 @@ int viv_unlock_vidmem(struct viv_conn *conn, viv_node_t node, enum viv_surf_type
     return rv;
 }
 
-#ifdef GCABI_HAS_CONTEXT
-int viv_commit(struct viv_conn *conn, struct _gcoCMDBUF *commandBuffer, viv_context_t contextBuffer, struct _gcsQUEUE *queue)
-{
-    int rv;
-    gcsHAL_INTERFACE id = {
-        .command = gcvHAL_COMMIT,
-        .u = {
-            .Commit = {
-                .commandBuffer = commandBuffer,
-                .contextBuffer = HANDLE_TO_VIV(contextBuffer),
-                .process = HANDLE_TO_VIV(conn->process)
-            }
-        }
-    };
-    if((rv=viv_invoke(conn, &id)) != gcvSTATUS_OK)
-        return rv;
-    /* commit queue after command buffer */
-    if(queue != NULL && (rv=viv_event_commit(conn, queue)) != gcvSTATUS_OK)
-       return rv;
-    return gcvSTATUS_OK;
-}
-#else
 int viv_commit(struct viv_conn *conn, struct _gcoCMDBUF *commandBuffer, viv_context_t context, struct _gcsQUEUE *queue)
 {
     gcsSTATE_DELTA fake_delta;
@@ -475,7 +443,6 @@ int viv_commit(struct viv_conn *conn, struct _gcoCMDBUF *commandBuffer, viv_cont
 
     return viv_invoke(conn, &id);
 }
-#endif
 
 int viv_event_commit(struct viv_conn *conn, struct _gcsQUEUE *queue)
 {

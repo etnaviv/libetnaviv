@@ -47,175 +47,6 @@
 */
 #define ETNA_MAX_UNSIGNALED_FLUSHES (40)
 
-/* Initialize kernel GPU context (v2 only)
- * XXX move all this context handling stuff to a separate implementation file.
- */
-#ifdef GCABI_HAS_CONTEXT
-
-static int gpu_context_clear(struct etna_ctx *ctx);
-
-#define GCCTX(x) ((gcoCONTEXT)(size_t)((x)->ctx))
-
-static int gpu_context_initialize(struct etna_ctx *ctx)
-{
-    gcoCONTEXT vctx = ETNA_CALLOC_STRUCT(_gcoCONTEXT);
-    if(vctx == NULL)
-    {
-        return ETNA_OUT_OF_MEMORY;
-    }
-    vctx->object.type = gcvOBJ_CONTEXT;
-    vctx->id = 0x0; /* Actual ID will be returned here by kernel */
-
-    vctx->pipe3DIndex = vctx->pipe2DIndex =     /* Any non-zero value will do, as kernel does not use */
-        vctx->linkIndex = vctx->inUseIndex = 1; /*  the actual values, just checks for zero */
-    vctx->initialPipe = ETNA_PIPE_3D; /* Pipe to be active at beginning of context buffer */
-    vctx->entryPipe = ETNA_PIPE_3D; /* Pipe at beginning of command buffer (needs to be added to context as well if */
-                                    /* pipe at end of context is different from entry pipe) */
-    vctx->currentPipe = ETNA_PIPE_3D; /* Pipe at end of command buffer */
-
-    /* CPU address of buffer */
-    vctx->logical = 0;
-    /* Number of bytes to read from command buffer by GPU */
-    vctx->bufferSize = 0;
-    /* Logical address of two NOP words at end of command buffer */
-    vctx->link = NULL;
-    /* Logical address of inUse flag as returned from kernel (within
-     * consecutive array), must have one word of NOP */
-    vctx->inUse = NULL;
-
-    ctx->ctx = VIV_TO_HANDLE(vctx);
-    /* Allocate initial context buffer */
-    /*   XXX DRM_ETNA_GEM_CACHE_xxx */
-    if((ctx->ctx_bo = etna_bo_new(ctx->conn, COMMAND_BUFFER_SIZE, DRM_ETNA_GEM_TYPE_CMD)) == NULL)
-    {
-        ETNA_FREE(vctx);
-        return ETNA_OUT_OF_MEMORY;
-    }
-    /* Set context to initial sane values */
-    gpu_context_clear(ctx);
-    return ETNA_OK;
-}
-
-/* Clear GPU context, to rebuild it for next flush */
-static int gpu_context_clear(struct etna_ctx *ctx)
-{
-    /* If context was used, queue free it and allocate new buffer to prevent
-     * overwriting it while being used by the GPU.  Otherwise we can just
-     * re-use it.
-     */
-    int rv;
-#ifdef DEBUG
-    fprintf(stderr, "gpu_context_clear (context %i)\n", (int)GCCTX(ctx)->id);
-#endif
-    if(GCCTX(ctx)->inUse != NULL &&
-       *GCCTX(ctx)->inUse)
-    {
-#ifdef DEBUG
-        fprintf(stderr, "gpu_context_clear: context was in use, deferred freeing and reallocating it\n");
-#endif
-        if((rv = etna_bo_del(ctx->conn, ctx->ctx_bo, ctx->queue)) != ETNA_OK)
-        {
-            return rv;
-        }
-        if((ctx->ctx_bo = etna_bo_new(ctx->conn, COMMAND_BUFFER_SIZE, DRM_ETNA_GEM_TYPE_CMD)) == NULL)
-        {
-            return ETNA_OUT_OF_MEMORY;
-        }
-    }
-    /* Leave space at beginning of buffer for PIPE switch */
-    GCCTX(ctx)->bufferSize = BEGIN_COMMIT_CLEARANCE;
-    GCCTX(ctx)->logical = etna_bo_map(ctx->ctx_bo);
-#ifdef GCABI_CONTEXT_HAS_PHYSICAL
-    GCCTX(ctx)->bytes = etna_bo_size(ctx->ctx_bo); /* actual size of buffer */
-    GCCTX(ctx)->physical = HANDLE_TO_VIV(etna_bo_gpu_address(ctx->ctx_bo));
-#endif
-    /* When context is empty, initial pipe should default to entry pipe so that
-     * no pipe switch is needed within the context and the kernel does the
-     * right thing.
-     */
-    GCCTX(ctx)->initialPipe = GCCTX(ctx)->entryPipe;
-    return ETNA_OK;
-}
-
-/** Start building context buffer.
- * Subsequent etna_reserve and other state setting commands will go to
- * the context buffer instead of the command buffer.
- * initial_pipe is the pipe as it has to be at the beginning of the context
- * buffer.
- *
- * @return ETNA_OK if succesful (can start building context)
- *         or an error code otherwise.
- */
-static int gpu_context_build_start(struct etna_ctx *ctx)
-{
-    if(ctx->cur_buf == ETNA_CTX_BUFFER)
-        return ETNA_INTERNAL_ERROR;
-    /* Save current buffer id and position */
-    ctx->cmdbuf[ctx->cur_buf]->offset = ctx->offset * 4;
-    ctx->stored_buf = ctx->cur_buf;
-
-    /* Switch to context buffer */
-    ctx->cur_buf = ETNA_CTX_BUFFER;
-    ctx->buf = GCCTX(ctx)->logical;
-    ctx->offset = GCCTX(ctx)->bufferSize / 4;
-
-    return ETNA_OK;
-}
-
-/** Finish building context buffer.
- * final_pipe is the current pipe at the end of the context buffer.
- */
-static int gpu_context_build_end(struct etna_ctx *ctx, enum etna_pipe final_pipe)
-{
-    if(ctx->cur_buf != ETNA_CTX_BUFFER)
-        return ETNA_INTERNAL_ERROR;
-    /* If closing pipe of context is different from entry pipe, add a switch
-     * command, as we want the context to end in the entry pipe. The kernel
-     * will handle switching to the entry pipe only when this is a new context.
-     */
-    if(final_pipe != GCCTX(ctx)->entryPipe)
-    {
-        etna_set_pipe(ctx, GCCTX(ctx)->entryPipe);
-    }
-    /* Set current size -- finishing up context before flush
-     * will add space for a LINK command and inUse flag.
-     */
-    GCCTX(ctx)->bufferSize = ctx->offset * 4;
-
-    /* Switch back to stored buffer */
-    ctx->cur_buf = ctx->stored_buf;
-    ctx->buf = VIV_TO_PTR(ctx->cmdbuf[ctx->cur_buf]->logical);
-    ctx->offset = ctx->cmdbuf[ctx->cur_buf]->offset / 4;
-    return ETNA_OK;
-}
-
-/** Finish up GPU context, make it ready for submission to kernel.
-   Append space for LINK and inUse flag.
- */
-static int gpu_context_finish_up(struct etna_ctx *ctx)
-{
-    uint32_t *logical = GCCTX(ctx)->logical;
-    uint32_t ptr = GCCTX(ctx)->bufferSize/4;
-    /* Append LINK (8 bytes) */
-    GCCTX(ctx)->link = &logical[ptr];
-    logical[ptr++] = VIV_FE_NOP_HEADER_OP_NOP;
-    logical[ptr++] = VIV_FE_NOP_HEADER_OP_NOP;
-    /* Append inUse (4 bytes) */
-    GCCTX(ctx)->inUse = (int*)&logical[ptr];
-    logical[ptr++] = 0;
-    /* Update buffer size to final value */
-    GCCTX(ctx)->bufferSize = ptr*4;
-#ifdef DEBUG
-    fprintf(stderr, "gpu_context_finish_up: bufferSize %i link %p inUse %p\n",
-            (int)GCCTX(ctx)->bufferSize, GCCTX(ctx)->link, GCCTX(ctx)->inUse);
-#endif
-    return ETNA_OK;
-}
-
-#else
-
-#define GCCTX(x) ((gckCONTEXT)((x)->ctx))
-
 static int gpu_context_initialize(struct etna_ctx *ctx)
 {
     /* attach to GPU */
@@ -256,7 +87,6 @@ static int gpu_context_free(struct etna_ctx *ctx)
 
     return ETNA_OK;
 }
-#endif
 
 int etna_create(struct viv_conn *conn, struct etna_ctx **ctx_out)
 {
@@ -374,10 +204,6 @@ int etna_free(struct etna_ctx *ctx)
         return ETNA_INVALID_ADDR;
     /* Free kernel command queue */
     etna_queue_free(ctx->queue);
-#ifdef GCABI_HAS_CONTEXT
-    /* Free context buffer */
-    etna_bo_del(ctx->conn, ctx->ctx_bo, NULL);
-#endif
     /* Free command buffers */
     for(int x=0; x<NUM_COMMAND_BUFFERS; ++x)
     {
@@ -386,9 +212,7 @@ int etna_free(struct etna_ctx *ctx)
         ETNA_FREE(ctx->cmdbuf[x]);
     }
     viv_user_signal_destroy(ctx->conn, ctx->sig_id);
-#ifndef GCABI_HAS_CONTEXT
     gpu_context_free(ctx);
-#endif
 
     ETNA_FREE(ctx);
     return ETNA_OK;
@@ -410,13 +234,6 @@ int _etna_reserve_internal(struct etna_ctx *ctx, size_t n)
         fprintf(stderr, "%s: Command buffer overflow! This is likely a programming error in the GPU driver.\n", __func__);
         abort();
     }
-#ifdef GCABI_HAS_CONTEXT
-    if(ctx->cur_buf == ETNA_CTX_BUFFER)
-    {
-        fprintf(stderr, "%s: Context buffer overflow! This is likely a programming error in the GPU driver.\n", __func__);
-        abort();
-    }
-#endif
     if(ctx->cur_buf != ETNA_NO_BUFFER)
     {
 #if 0
@@ -515,9 +332,6 @@ int etna_flush(struct etna_ctx *ctx, uint32_t *fence_out)
 #ifdef DEBUG_CMDBUF
     etna_dump_cmd_buffer(ctx);
 #endif
-#ifdef GCABI_HAS_CONTEXT
-    gpu_context_finish_up(ctx);
-#endif
     if(!queue_first)
         ctx->flushes += 1;
     else
@@ -535,34 +349,6 @@ int etna_flush(struct etna_ctx *ctx, uint32_t *fence_out)
         pthread_mutex_unlock(&ctx->conn->fence_mutex);
     }
     /***** End fence mutex locked */
-#ifdef GCABI_HAS_CONTEXT
-    /* set context entryPipe to currentPipe (next commit will start with current pipe) */
-    GCCTX(ctx)->entryPipe = GCCTX(ctx)->currentPipe;
-    gpu_context_clear(ctx);
-    if(ctx->ctx_cb)
-    {
-        enum etna_pipe initial_pipe, final_pipe;
-        /* Start building GPU context */
-        if((status = gpu_context_build_start(ctx)) != ETNA_OK)
-        {
-            fprintf(stderr, "%s: gpu_context_build_start failed with status %i\n", __func__, status);
-            return status;
-        }
-        if((status = ctx->ctx_cb(ctx->ctx_cb_data, ctx, &initial_pipe, &final_pipe)) != ETNA_OK)
-        {
-            fprintf(stderr, "%s: Context callback failed with status %i\n", __func__, status);
-            return status;
-        }
-        /* Set initial pipe in context */
-        GCCTX(ctx)->initialPipe = initial_pipe;
-        /* Finish building GPU context */
-        if((status = gpu_context_build_end(ctx, final_pipe)) != ETNA_OK)
-        {
-            fprintf(stderr, "%s: gpu_context_build_end failed with status %i\n", __func__, status);
-            return status;
-        }
-    }
-#endif
     cur_buf->startOffset = cur_buf->offset + END_COMMIT_CLEARANCE;
     cur_buf->offset = cur_buf->startOffset + BEGIN_COMMIT_CLEARANCE;
 
@@ -579,11 +365,7 @@ int etna_flush(struct etna_ctx *ctx, uint32_t *fence_out)
        stored as an index instead of a byte offset.  */
     ctx->offset = cur_buf->offset / 4;
 #ifdef DEBUG
-#ifdef GCABI_HAS_CONTEXT
-    fprintf(stderr, "  New start offset: %x New offset: %x Contextbuffer used: %i\n", cur_buf->startOffset, cur_buf->offset, *(GCCTX(ctx)->inUse));
-#else
     fprintf(stderr, "  New start offset: %x New offset: %x\n", cur_buf->startOffset, cur_buf->offset);
-#endif
 #endif
     return ETNA_OK;
 
@@ -640,12 +422,6 @@ int etna_set_pipe(struct etna_ctx *ctx, enum etna_pipe pipe)
     ETNA_EMIT_LOAD_STATE(ctx, VIVS_GL_PIPE_SELECT>>2, 1, 0);
     ETNA_EMIT(ctx, pipe);
 
-#ifdef GCABI_HAS_CONTEXT
-    if(ctx->cur_buf != ETNA_CTX_BUFFER)
-    {
-        GCCTX(ctx)->currentPipe = pipe;
-    }
-#endif
     return ETNA_OK;
 }
 
