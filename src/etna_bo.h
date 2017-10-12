@@ -38,6 +38,8 @@
 #define DRM_ETNA_GEM_TYPE_HZ         0x00000006 /* Hierarchical depth render target */
 #define DRM_ETNA_GEM_TYPE_BMP        0x00000007 /* Bitmap */
 #define DRM_ETNA_GEM_TYPE_TS         0x00000008 /* Tile status cache */
+#define DRM_ETNA_GEM_TYPE_TXD        0x00000009 /* Texture descriptor */
+#define DRM_ETNA_GEM_TYPE_IC         0x0000000A /* Instruction cache (Shader code) */
 #define DRM_ETNA_GEM_TYPE_MASK       0x0000000F
 
 #define DRM_ETNA_GEM_CACHE_NONE      0x00000000

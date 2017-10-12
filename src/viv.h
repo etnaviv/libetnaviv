@@ -75,7 +75,9 @@ enum viv_surf_type
     VIV_SURF_IMAGE,
     VIV_SURF_MASK,
     VIV_SURF_SCISSOR,
-    VIV_SURF_HIERARCHICAL_DEPTH
+    VIV_SURF_HIERARCHICAL_DEPTH,
+    VIV_SURF_ICACHE,
+    VIV_SURF_TXDESC
 };
 
 /* Video memory pool type. */

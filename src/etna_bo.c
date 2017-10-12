@@ -34,7 +34,12 @@
 #include "gc_abi.h"
 
 //#define DEBUG
-#define ETNA_VIDMEM_ALIGNMENT (0x40)
+/* TODO:
+ *   0x100 for RT, ZS, CODE
+ *   0x8 for VERTEX
+ *   0x40 for TXD, TS
+ */
+#define ETNA_VIDMEM_ALIGNMENT (0x100)
 
 enum etna_bo_type {
     ETNA_BO_TYPE_VIDMEM,    /* Main vidmem */
@@ -204,6 +209,8 @@ struct etna_bo* etna_bo_new(struct viv_conn *conn, size_t bytes, uint32_t flags)
         case DRM_ETNA_GEM_TYPE_HZ:  type = VIV_SURF_HIERARCHICAL_DEPTH; break;
         case DRM_ETNA_GEM_TYPE_BMP: type = VIV_SURF_BITMAP; break;
         case DRM_ETNA_GEM_TYPE_TS:  type = VIV_SURF_TILE_STATUS; break;
+        case DRM_ETNA_GEM_TYPE_IC:  type = VIV_SURF_ICACHE; break;
+        case DRM_ETNA_GEM_TYPE_TXD: type = VIV_SURF_TXDESC; break;
         default: /* Invalid type */
             ETNA_FREE(mem);
             return NULL;

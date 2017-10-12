@@ -40,6 +40,12 @@ static inline gceSURF_TYPE convert_surf_type(enum viv_surf_type type)
     case VIV_SURF_MASK: return gcvSURF_MASK;
     case VIV_SURF_SCISSOR: return gcvSURF_SCISSOR;
     case VIV_SURF_HIERARCHICAL_DEPTH: return gcvSURF_HIERARCHICAL_DEPTH;
+#ifdef GCABI_HAS_SURF_ICACHE
+    case VIV_SURF_ICACHE: return gcvSURF_ICACHE;
+#endif
+#ifdef GCABI_HAS_SURF_TXDESC
+    case VIV_SURF_TXDESC: return gcvSURF_TXDESC;
+#endif
     default: return gcvSURF_TYPE_UNKNOWN;
     }
 }
