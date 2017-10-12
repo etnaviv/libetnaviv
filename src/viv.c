@@ -201,6 +201,7 @@ static void convert_chip_specs(struct viv_specs *out, const struct _gcsHAL_QUERY
 {
     out->chip_model = in->chipModel;
     out->chip_revision = in->chipRevision;
+#ifndef GCABI_HAS_NO_FEATURE_BITS
     out->chip_features[0] = in->chipFeatures;
     out->chip_features[1] = in->chipMinorFeatures;
     out->chip_features[2] = in->chipMinorFeatures1;
@@ -235,6 +236,7 @@ static void convert_chip_specs(struct viv_specs *out, const struct _gcsHAL_QUERY
     out->varyings_count = in->varyingsCount;
 #else
     out->varyings_count = 8;
+#endif
 #endif
 }
 
