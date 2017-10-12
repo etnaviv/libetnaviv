@@ -305,13 +305,29 @@ int viv_open(enum viv_hw_type hw_type, struct viv_conn **out)
     fprintf(stderr, "  Contiguous size: 0x%08x\n", (uint32_t)id.u.QueryVideoMemory.contiguousSize);
 
     conn->mem_base = (viv_addr_t)id.u.QueryVideoMemory.contiguousPhysical;
-    conn->mem_length = id.u.QueryVideoMemory.contiguousSize; 
+    conn->mem_length = id.u.QueryVideoMemory.contiguousSize;
+#ifdef GCABI_NO_MMAP
+    memset(&id, 0, sizeof(gcsHAL_INTERFACE));
+    id.command = gcvHAL_MAP_MEMORY;
+    id.u.MapMemory.physical = conn->mem_base;
+    id.u.MapMemory.bytes = conn->mem_length;
+    err = viv_invoke(conn, &id);
+    if(err != gcvSTATUS_OK)
+    {
+        goto error;
+    }
+    conn->mem_base = (viv_addr_t)id.u.MapMemory.physical;
+    conn->mem_length = id.u.MapMemory.bytes;
+    conn->mem = VIV_TO_PTR(id.u.MapMemory.logical);
+#else
     conn->mem = mmap(NULL, conn->mem_length, PROT_READ|PROT_WRITE, MAP_SHARED, conn->fd, conn->mem_base);
     if(conn->mem == NULL)
     {
         err = -1;
         goto error;
     }
+#endif
+    fprintf(stderr, "  Contiguous mapping: %p\n", conn->mem);
 
     conn->process = getpid(); /* value passed as .process to commands */
 
