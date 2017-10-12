@@ -133,6 +133,9 @@ int etna_create(struct viv_conn *conn, struct etna_ctx **ctx_out)
         ctx->cmdbuf[x]->bytes = etna_bo_size(ctx->cmdbufi[x].bo);
 #endif
         ctx->cmdbuf[x]->logical = PTR_TO_VIV((void*)etna_bo_map(ctx->cmdbufi[x].bo));
+#ifdef GCABI_CMDBUF_HAS_RESERVED_TAIL
+        ctx->cmdbuf[x]->reservedTail = END_COMMIT_CLEARANCE;
+#endif
 
         if(viv_user_signal_create(conn, 0, &ctx->cmdbufi[x].sig_id) != 0 ||
            viv_user_signal_signal(conn, ctx->cmdbufi[x].sig_id, 1) != 0)

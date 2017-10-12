@@ -64,7 +64,7 @@
  *
  */
 #define BEGIN_COMMIT_CLEARANCE 32
-#define END_COMMIT_CLEARANCE 24
+#define END_COMMIT_CLEARANCE 32
 
 /** Structure definitions */
 
