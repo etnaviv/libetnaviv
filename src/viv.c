@@ -252,7 +252,11 @@ int viv_open(enum viv_hw_type hw_type, struct viv_conn **out)
 #ifdef HAVE_ENABLE_VIVHOOK
     char *fdr_out = getenv("ETNAVIV_FDR");
     if(fdr_out)
-       hook_start_logging(fdr_out);
+    {
+        hook_start_logging(fdr_out);
+        uint32_t version_marker[5] = {0x424f4c42, gcvVERSION_MAJOR, gcvVERSION_MINOR, gcvVERSION_PATCH, gcvVERSION_BUILD};
+        viv_hook_log_marker((void*)version_marker, sizeof(version_marker));
+    }
 #endif
     conn->hw_type = hw_type;
     gcsHAL_INTERFACE id = {};
