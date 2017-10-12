@@ -168,6 +168,9 @@ int viv_invoke(struct viv_conn *conn, struct _gcsHAL_INTERFACE *cmd)
 #ifdef GCABI_HAS_HARDWARE_TYPE
     cmd->hardwareType = (gceHARDWARE_TYPE)conn->hw_type;
 #endif
+#ifdef GCABI_HAS_ENGINE
+    cmd->engine = 65535;
+#endif
     if(viv_ioctl(conn, IOCTL_GCHAL_INTERFACE, cmd, INTERFACE_SIZE) < 0)
         return -1;
 #ifdef DEBUG
