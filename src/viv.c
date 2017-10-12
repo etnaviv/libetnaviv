@@ -554,6 +554,16 @@ int viv_reset(struct viv_conn *conn)
 
 int viv_free_vidmem(struct viv_conn *conn, viv_node_t node, bool submit_as_event)
 {
+#ifdef GCABI_NO_FREE_VIDEO_MEMORY
+    gcsHAL_INTERFACE id = {
+        .command = gcvHAL_RELEASE_VIDEO_MEMORY,
+        .u = {
+            .ReleaseVideoMemory = {
+                .node = HANDLE_TO_VIV(node)
+            }
+        }
+    };
+#else
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_FREE_VIDEO_MEMORY,
         .u = {
@@ -562,6 +572,7 @@ int viv_free_vidmem(struct viv_conn *conn, viv_node_t node, bool submit_as_event
             }
         }
     };
+#endif
     if(submit_as_event) /* submit as event immediately */
     {
         struct _gcsQUEUE queue = {
