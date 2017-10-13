@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-struct viv_conn;
+struct etna_device;
 
 /* GPU profile counters */
 enum viv_profile_counter
@@ -75,19 +75,19 @@ struct viv_profile_counter_info *viv_get_profile_counter_info(enum viv_profile_c
 /** Return a vector of booleans, one for each counter, depending on whether it
  * (reliably) resets after a read.
  */
-void viv_get_counters_reset_after_read(struct viv_conn *conn, bool *counters);
+void viv_get_counters_reset_after_read(struct etna_device *conn, bool *counters);
 
 /** Read and reset 2D profile counters.
  *  This will return VIV_STATUS_NOT_SUPPORTED if built without profiling support.
  *  Call viv_get_num_profile_counters() to determine how many uint32_ts to reserve for output buffer.
  */
-int viv_read_profile_counters_2d(struct viv_conn *conn, uint32_t *out);
+int viv_read_profile_counters_2d(struct etna_device *conn, uint32_t *out);
 
 /** Read and reset 3D profile counters.
  *  This will return VIV_STATUS_NOT_SUPPORTED if built without profiling support.
  *  Call viv_get_num_profile_counters() to determine how many uint32_ts to reserve for output buffer.
  */
-int viv_read_profile_counters_3d(struct viv_conn *conn, uint32_t *out);
+int viv_read_profile_counters_3d(struct etna_device *conn, uint32_t *out);
 
 #endif
 

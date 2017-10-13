@@ -47,6 +47,9 @@ enum viv_features_word
     viv_chipMinorFeatures1 = 2,
     viv_chipMinorFeatures2 = 3,
     viv_chipMinorFeatures3 = 4,
+    viv_chipMinorFeatures4 = 5,
+    viv_chipMinorFeatures5 = 6,
+    viv_chipMinorFeatures6 = 7,
     VIV_FEATURES_WORD_COUNT /* Must be last */
 };
 
@@ -185,7 +188,7 @@ struct viv_kernel_driver_version {
 };
 
 /* Structure encompassing a connection to kernel driver */
-struct viv_conn {
+struct etna_device {
     int fd;
     enum viv_hw_type hw_type;
 
@@ -215,40 +218,40 @@ struct _gcsQUEUE;
 
 /* Open a new connection to the GPU driver.
  */
-int viv_open(enum viv_hw_type hw_type, struct viv_conn **out);
+int viv_open(enum viv_hw_type hw_type, struct etna_device **out);
 
 /* Almost raw ioctl interface.  This provides an interface similar to
  * gcoOS_DeviceControl.
  * @returns standard ioctl semantics
  */
-int viv_ioctl(struct viv_conn *conn, int request, void *data, size_t size);
+int viv_ioctl(struct etna_device *conn, int request, void *data, size_t size);
 
 /* Call ioctl interface with structure cmd as input and output.
  * @returns status (gcvSTATUS_xxx)
  */
-int viv_invoke(struct viv_conn *conn, struct _gcsHAL_INTERFACE *cmd);
+int viv_invoke(struct etna_device *conn, struct _gcsHAL_INTERFACE *cmd);
 
 /* Close connection to GPU driver and free temporary structures
  * and mapping.
  */
-int viv_close(struct viv_conn *conn);
+int viv_close(struct etna_device *conn);
 
 /** Allocate a span of physical contiguous GPU-mapped memory */
-int viv_alloc_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t *physical, void **logical, size_t *bytes_out);
+int viv_alloc_contiguous(struct etna_device *conn, size_t bytes, viv_addr_t *physical, void **logical, size_t *bytes_out);
 
 /** Allocate linear video memory.
   @returns a handle. To get the GPU and CPU address of the memory, use lock_vidmem
  */
-int viv_alloc_linear_vidmem(struct viv_conn *conn, size_t bytes, size_t alignment, enum viv_surf_type type, enum viv_pool pool, viv_node_t *node, size_t *bytes_out);
+int viv_alloc_linear_vidmem(struct etna_device *conn, size_t bytes, size_t alignment, enum viv_surf_type type, enum viv_pool pool, viv_node_t *node, size_t *bytes_out);
 
 /** Lock (map) video memory node to GPU and CPU memory.
  * Video memory needs to be locked to be used by either the CPU or GPU.
  */
-int viv_lock_vidmem(struct viv_conn *conn, viv_node_t node, viv_addr_t *physical, void **logical);
+int viv_lock_vidmem(struct etna_device *conn, viv_node_t node, viv_addr_t *physical, void **logical);
 
 /** Commit GPU command buffer and context. This submits a batch of commands.
  */
-int viv_commit(struct viv_conn *conn, struct _gcoCMDBUF *commandBuffer, viv_context_t context, struct _gcsQUEUE *queue);
+int viv_commit(struct etna_device *conn, struct _gcoCMDBUF *commandBuffer, viv_context_t context, struct _gcsQUEUE *queue);
 
 /** Unlock (unmap) video memory node from GPU and CPU memory.
  *
@@ -257,86 +260,86 @@ int viv_commit(struct viv_conn *conn, struct _gcoCMDBUF *commandBuffer, viv_cont
  * unlock stage must be submitted as event (either through this function with submit_as_event=true
  * or through etna_queue_unlock_vidmem).
  */
-int viv_unlock_vidmem(struct viv_conn *conn, viv_node_t node, enum viv_surf_type type, bool submit_as_event, int *async);
+int viv_unlock_vidmem(struct etna_device *conn, viv_node_t node, enum viv_surf_type type, bool submit_as_event, int *async);
 
 /** Free a block of video memory previously allocated with viv_alloc_linear_vidmem.
  */
-int viv_free_vidmem(struct viv_conn *conn, viv_node_t node, bool submit_as_event);
+int viv_free_vidmem(struct etna_device *conn, viv_node_t node, bool submit_as_event);
 
 /** Free block of contiguous memory previously allocated with viv_alloc_contiguous.
  */
-int viv_free_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t physical, void *logical);
+int viv_free_contiguous(struct etna_device *conn, size_t bytes, viv_addr_t physical, void *logical);
 
 /** Map a dmabuf to GPU memory.
  */
-int viv_map_dmabuf(struct viv_conn *conn, int fd, viv_usermem_t *info, viv_addr_t *address, int prot);
+int viv_map_dmabuf(struct etna_device *conn, int fd, viv_usermem_t *info, viv_addr_t *address, int prot);
 
 /** Map user memory to GPU memory, allowing for read/write protections.
  * Note: GPU is not protected against reads/writes.
  */
-int viv_map_user_memory_prot(struct viv_conn *conn, void *memory, size_t size, int prot, viv_usermem_t *info, viv_addr_t *address);
+int viv_map_user_memory_prot(struct etna_device *conn, void *memory, size_t size, int prot, viv_usermem_t *info, viv_addr_t *address);
 
 /** Map user memory to GPU memory.
  */
-int viv_map_user_memory(struct viv_conn *conn, void *memory, size_t size, viv_usermem_t *info, viv_addr_t *address);
+int viv_map_user_memory(struct etna_device *conn, void *memory, size_t size, viv_usermem_t *info, viv_addr_t *address);
 
 /** Unmap user memory from GPU memory.
  */
-int viv_unmap_user_memory(struct viv_conn *conn, void *memory, size_t size, viv_usermem_t info, viv_addr_t address);
+int viv_unmap_user_memory(struct etna_device *conn, void *memory, size_t size, viv_usermem_t info, viv_addr_t address);
 
 /** Commit event queue.
  */
-int viv_event_commit(struct viv_conn *conn, struct _gcsQUEUE *queue);
+int viv_event_commit(struct etna_device *conn, struct _gcsQUEUE *queue);
 
 /** Create a new user signal.
  *  if manualReset=0 automatic reset on completion of signal_wait
  *     manualReset=1 need to manually reset state to 0 using SIGNAL
  */
-int viv_user_signal_create(struct viv_conn *conn, int manualReset, int *id_out);
+int viv_user_signal_create(struct etna_device *conn, int manualReset, int *id_out);
 
 /** Set user signal state.
  */
-int viv_user_signal_signal(struct viv_conn *conn, int sig_id, int state);
+int viv_user_signal_signal(struct etna_device *conn, int sig_id, int state);
 
 /** Wait for signal.
  * @param[in] wait Provide time to wait in milliseconds, or VIV_WAIT_INDEFINITE.
  */
-int viv_user_signal_wait(struct viv_conn *conn, int sig_id, int wait);
+int viv_user_signal_wait(struct etna_device *conn, int sig_id, int wait);
 
 /** Destroy signal created with viv_user_signal_create.
  */
-int viv_user_signal_destroy(struct viv_conn *conn, int sig_id);
+int viv_user_signal_destroy(struct etna_device *conn, int sig_id);
 
-void viv_show_chip_info(struct viv_conn *conn);
+void viv_show_chip_info(struct etna_device *conn);
 
 /** Send reset command to GPU.
  * This is supposed to fix a hung state, but its effectiveness depends on the SoC.
  */
-int viv_reset(struct viv_conn *conn);
+int viv_reset(struct etna_device *conn);
 
 /** Read register from GPU.
  * @note Needs kernel module compiled with user space register access
  * (gcdREGISTER_ACCESS_FROM_USER=1)
  */
-int viv_read_register(struct viv_conn *conn, uint32_t address, uint32_t *data);
+int viv_read_register(struct etna_device *conn, uint32_t address, uint32_t *data);
 
 /** Write register to GPU.
  * @note Needs kernel module compiled with user space register access
  * (gcdREGISTER_ACCESS_FROM_USER=1)
  */
-int viv_write_register(struct viv_conn *conn, uint32_t address, uint32_t data);
+int viv_write_register(struct etna_device *conn, uint32_t address, uint32_t data);
 
 /** Internal: Request a new fence handle and return it. Also return signal id
  * associated with the fence, to add to queue.
  * @note must be called with fence_mutex held.
  */
-int _viv_fence_new(struct viv_conn *conn, uint32_t *fence_out, int *signal_out);
+int _viv_fence_new(struct etna_device *conn, uint32_t *fence_out, int *signal_out);
 
 /** Internal: Mark a fence as pending.
  * Call this only after submitting the signal to the kernel.
  * @note must be called with fence_mutex held.
  */
-void _viv_fence_mark_pending(struct viv_conn *conn, uint32_t fence);
+void _viv_fence_mark_pending(struct etna_device *conn, uint32_t fence);
 
 /** Wait for fence or poll status.
  * Timeout is in milliseconds.
@@ -345,7 +348,7 @@ void _viv_fence_mark_pending(struct viv_conn *conn, uint32_t fence);
  *         VIV_STATUS_TIMEOUT if timeout expired first
  *         other if an error occured
  */
-int viv_fence_finish(struct viv_conn *conn, uint32_t fence, uint32_t timeout);
+int viv_fence_finish(struct etna_device *conn, uint32_t fence, uint32_t timeout);
 
 /** Convenience macro to probe features from state.xml.h:
  * VIV_FEATURE(chipFeatures, FAST_CLEAR)

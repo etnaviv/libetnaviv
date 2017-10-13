@@ -38,6 +38,7 @@
 
 #include "gc_abi.h"
 #include "viv_internal.h"
+#include "etnaviv_drmif.h"
 
 #ifdef HAVE_ENABLE_VIVHOOK
 /* If set, command stream will be logged to environment variable ETNAVIV_FDR */
@@ -85,7 +86,7 @@ const char *galcore_device[] = {"/dev/gal3d", "/dev/galcore", "/dev/graphics/gal
 #define INTERFACE_SIZE (sizeof(gcsHAL_INTERFACE))
 
 /* Allocate signals for fences */
-static int viv_allocate_signals(struct viv_conn *conn)
+static int viv_allocate_signals(struct etna_device *conn)
 {
     int rv;
     if(pthread_mutex_init(&conn->fence_mutex, NULL))
@@ -106,7 +107,7 @@ static int viv_allocate_signals(struct viv_conn *conn)
 }
 
 /* Free signals for fences */
-static int viv_deallocate_signals(struct viv_conn *conn)
+static int viv_deallocate_signals(struct etna_device *conn)
 {
     int rv;
     for(int x=0; x<VIV_NUM_FENCE_SIGNALS; ++x)
@@ -120,7 +121,7 @@ static int viv_deallocate_signals(struct viv_conn *conn)
 }
 
 /* Get signal id # for a fence */
-static int signal_for_fence(struct viv_conn *conn, uint32_t fence)
+static int signal_for_fence(struct etna_device *conn, uint32_t fence)
 {
     if((conn->next_fence_id - fence) >= VIV_NUM_FENCE_SIGNALS)
         return -1; /* too old */
@@ -131,7 +132,7 @@ static int signal_for_fence(struct viv_conn *conn, uint32_t fence)
  * gcoOS_DeviceControl.
  * @returns standard ioctl semantics
  */
-int viv_ioctl(struct viv_conn *conn, int request, void *data, size_t size)
+int viv_ioctl(struct etna_device *conn, int request, void *data, size_t size)
 {
     vivante_ioctl_data_t ic = {
 #ifdef GCABI_UINT64_IOCTL_DATA
@@ -163,7 +164,7 @@ int viv_ioctl(struct viv_conn *conn, int request, void *data, size_t size)
 /* Call ioctl interface with structure cmd as input and output.
  * @returns status (VIV_STATUS_xxx)
  */
-int viv_invoke(struct viv_conn *conn, struct _gcsHAL_INTERFACE *cmd)
+int viv_invoke(struct etna_device *conn, struct _gcsHAL_INTERFACE *cmd)
 {
 #ifdef GCABI_HAS_HARDWARE_TYPE
     cmd->hardwareType = (gceHARDWARE_TYPE)conn->hw_type;
@@ -182,10 +183,10 @@ int viv_invoke(struct viv_conn *conn, struct _gcsHAL_INTERFACE *cmd)
     return cmd->status;
 }
 
-int viv_close(struct viv_conn *conn)
+void etna_device_del(struct etna_device *conn)
 {
     if(conn->fd < 0)
-        return -1;
+        return;
 
     (void) viv_deallocate_signals(conn);
 
@@ -196,7 +197,6 @@ int viv_close(struct viv_conn *conn)
 #ifdef HAVE_ENABLE_VIVHOOK
     close_hook();
 #endif
-    return 0;
 }
 
 /* convert specs to kernel-independent format */
@@ -243,12 +243,13 @@ static void convert_chip_specs(struct viv_specs *out, const struct _gcsHAL_QUERY
 #endif
 }
 
-int viv_open(enum viv_hw_type hw_type, struct viv_conn **out)
+struct etna_device *etna_device_new(int fd_in)
 {
-    struct viv_conn *conn = ETNA_CALLOC_STRUCT(viv_conn);
+    enum viv_hw_type hw_type = VIV_HW_3D; /* hardcode for now */
+    struct etna_device *conn = ETNA_CALLOC_STRUCT(etna_device);
     int err = 0;
     if(conn == NULL)
-        return -1;
+        return NULL;
 #ifdef HAVE_ENABLE_VIVHOOK
     char *fdr_out = getenv("ETNAVIV_FDR");
     if(fdr_out)
@@ -256,18 +257,26 @@ int viv_open(enum viv_hw_type hw_type, struct viv_conn **out)
         hook_start_logging(fdr_out);
         uint32_t version_marker[5] = {0x424f4c42, gcvVERSION_MAJOR, gcvVERSION_MINOR, gcvVERSION_PATCH, gcvVERSION_BUILD};
         viv_hook_log_marker((void*)version_marker, sizeof(version_marker));
+        viv_hook_set_galcore_fd(fd_in);
     }
 #endif
     conn->hw_type = hw_type;
     gcsHAL_INTERFACE id = {};
-    /* try galcore devices */
-    conn->fd = -1;
-    for(const char **pname = galcore_device; *pname && conn->fd < 0; ++pname)
+
+    if (fd_in < 0)
     {
-        conn->fd = open(*pname, O_RDWR | O_CLOEXEC);
+        /* try galcore devices */
+        conn->fd = -1;
+        for(const char **pname = galcore_device; *pname && conn->fd < 0; ++pname)
+        {
+            conn->fd = open(*pname, O_RDWR | O_CLOEXEC);
+        }
+        if((err=conn->fd) < 0)
+            goto error;
+    } else {
+        /* use passed-in fd */
+        conn->fd = fd_in;
     }
-    if((err=conn->fd) < 0)
-        goto error;
 
     /* Determine version */
     id.command = gcvHAL_VERSION;
@@ -338,20 +347,19 @@ int viv_open(enum viv_hw_type hw_type, struct viv_conn **out)
     if((err=viv_allocate_signals(conn)) != VIV_STATUS_OK)
         goto error;
 
-    *out = conn;
-    return gcvSTATUS_OK;
+    return conn;
 error:
     if(conn->fd >= 0)
         close(conn->fd);
     free(conn);
-    return err;
+    return NULL;
 }
 
 #ifdef GCABI_VIRTUAL_COMMAND_BUFFERS
 /* For now we'll just pretent it's contiguous memory, it doesn't matter as it's
  * only used for command buffers.
  */
-int viv_alloc_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t *physical, void **logical, size_t *bytes_out)
+int viv_alloc_contiguous(struct etna_device *conn, size_t bytes, viv_addr_t *physical, void **logical, size_t *bytes_out)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_ALLOCATE_VIRTUAL_COMMAND_BUFFER,
@@ -375,7 +383,7 @@ int viv_alloc_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t *physic
     return gcvSTATUS_OK;
 }
 #else
-int viv_alloc_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t *physical, void **logical, size_t *bytes_out)
+int viv_alloc_contiguous(struct etna_device *conn, size_t bytes, viv_addr_t *physical, void **logical, size_t *bytes_out)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_ALLOCATE_CONTIGUOUS_MEMORY,
@@ -400,7 +408,7 @@ int viv_alloc_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t *physic
 }
 #endif
 
-int viv_alloc_linear_vidmem(struct viv_conn *conn, size_t bytes, size_t alignment, enum viv_surf_type type, enum viv_pool pool, viv_node_t *node, size_t *bytes_out)
+int viv_alloc_linear_vidmem(struct etna_device *conn, size_t bytes, size_t alignment, enum viv_surf_type type, enum viv_pool pool, viv_node_t *node, size_t *bytes_out)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_ALLOCATE_LINEAR_VIDEO_MEMORY,
@@ -427,7 +435,7 @@ int viv_alloc_linear_vidmem(struct viv_conn *conn, size_t bytes, size_t alignmen
     return gcvSTATUS_OK;
 }
 
-int viv_lock_vidmem(struct viv_conn *conn, viv_node_t node, viv_addr_t *physical, void **logical)
+int viv_lock_vidmem(struct etna_device *conn, viv_node_t node, viv_addr_t *physical, void **logical)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_LOCK_VIDEO_MEMORY,
@@ -449,7 +457,7 @@ int viv_lock_vidmem(struct viv_conn *conn, viv_node_t node, viv_addr_t *physical
     return gcvSTATUS_OK;
 }
 
-int viv_unlock_vidmem(struct viv_conn *conn, viv_node_t node, enum viv_surf_type type, bool submit_as_event, int *async)
+int viv_unlock_vidmem(struct etna_device *conn, viv_node_t node, enum viv_surf_type type, bool submit_as_event, int *async)
 {
     int rv;
     if(!submit_as_event && async == NULL)
@@ -478,7 +486,7 @@ int viv_unlock_vidmem(struct viv_conn *conn, viv_node_t node, enum viv_surf_type
     return rv;
 }
 
-int viv_commit(struct viv_conn *conn, struct _gcoCMDBUF *commandBuffer, viv_context_t context, struct _gcsQUEUE *queue)
+int viv_commit(struct etna_device *conn, struct _gcoCMDBUF *commandBuffer, viv_context_t context, struct _gcsQUEUE *queue)
 {
     gcsSTATE_DELTA fake_delta;
     memset(&fake_delta, 0, sizeof(gcsSTATE_DELTA));
@@ -506,7 +514,7 @@ int viv_commit(struct viv_conn *conn, struct _gcoCMDBUF *commandBuffer, viv_cont
     return viv_invoke(conn, &id);
 }
 
-int viv_event_commit(struct viv_conn *conn, struct _gcsQUEUE *queue)
+int viv_event_commit(struct etna_device *conn, struct _gcsQUEUE *queue)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_EVENT_COMMIT,
@@ -519,7 +527,7 @@ int viv_event_commit(struct viv_conn *conn, struct _gcsQUEUE *queue)
     return viv_invoke(conn, &id);
 }
 
-int viv_user_signal_create(struct viv_conn *conn, int manualReset, int *id_out)
+int viv_user_signal_create(struct etna_device *conn, int manualReset, int *id_out)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_USER_SIGNAL,
@@ -540,7 +548,7 @@ int viv_user_signal_create(struct viv_conn *conn, int manualReset, int *id_out)
     return gcvSTATUS_OK;
 }
 
-int viv_user_signal_signal(struct viv_conn *conn, int sig_id, int state)
+int viv_user_signal_signal(struct etna_device *conn, int sig_id, int state)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_USER_SIGNAL,
@@ -555,7 +563,7 @@ int viv_user_signal_signal(struct viv_conn *conn, int sig_id, int state)
     return viv_invoke(conn, &id);
 }
 
-int viv_user_signal_wait(struct viv_conn *conn, int sig_id, int wait)
+int viv_user_signal_wait(struct etna_device *conn, int sig_id, int wait)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_USER_SIGNAL,
@@ -570,7 +578,7 @@ int viv_user_signal_wait(struct viv_conn *conn, int sig_id, int wait)
     return viv_invoke(conn, &id);
 }
 
-int viv_user_signal_destroy(struct viv_conn *conn, int sig_id)
+int viv_user_signal_destroy(struct etna_device *conn, int sig_id)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_USER_SIGNAL,
@@ -584,7 +592,7 @@ int viv_user_signal_destroy(struct viv_conn *conn, int sig_id)
     return viv_invoke(conn, &id);
 }
 
-void viv_show_chip_info(struct viv_conn *conn)
+void viv_show_chip_info(struct etna_device *conn)
 {
     fprintf(stderr, "* Chip identity:\n");
     fprintf(stderr, "  Chip model: %08x\n", conn->chip.chip_model);
@@ -606,7 +614,7 @@ void viv_show_chip_info(struct viv_conn *conn)
     fprintf(stderr, "  Buffer size: 0x%08x\n", conn->chip.buffer_size);
 }
 
-int viv_reset(struct viv_conn *conn)
+int viv_reset(struct etna_device *conn)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_RESET,
@@ -614,7 +622,7 @@ int viv_reset(struct viv_conn *conn)
     return viv_invoke(conn, &id);
 }
 
-int viv_free_vidmem(struct viv_conn *conn, viv_node_t node, bool submit_as_event)
+int viv_free_vidmem(struct etna_device *conn, viv_node_t node, bool submit_as_event)
 {
 #ifdef GCABI_NO_FREE_VIDEO_MEMORY
     gcsHAL_INTERFACE id = {
@@ -651,7 +659,7 @@ int viv_free_vidmem(struct viv_conn *conn, viv_node_t node, bool submit_as_event
 /* For now we'll just pretent it's contiguous memory, it doesn't matter as it's
  * only used for command buffers.
  */
-int viv_free_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t physical, void *logical)
+int viv_free_contiguous(struct etna_device *conn, size_t bytes, viv_addr_t physical, void *logical)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_FREE_VIRTUAL_COMMAND_BUFFER,
@@ -666,7 +674,7 @@ int viv_free_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t physical
     return viv_invoke(conn, &id);
 }
 #else
-int viv_free_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t physical, void *logical)
+int viv_free_contiguous(struct etna_device *conn, size_t bytes, viv_addr_t physical, void *logical)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_FREE_CONTIGUOUS_MEMORY,
@@ -682,7 +690,7 @@ int viv_free_contiguous(struct viv_conn *conn, size_t bytes, viv_addr_t physical
 }
 #endif
 
-int viv_map_dmabuf(struct viv_conn *conn, int fd, viv_usermem_t *info, viv_addr_t *address, int prot)
+int viv_map_dmabuf(struct etna_device *conn, int fd, viv_usermem_t *info, viv_addr_t *address, int prot)
 {
     struct viv_dmabuf_map map = {
 #ifdef GCABI_HAS_HARDWARE_TYPE
@@ -699,7 +707,7 @@ int viv_map_dmabuf(struct viv_conn *conn, int fd, viv_usermem_t *info, viv_addr_
     return VIV_STATUS_OK;
 }
 
-int viv_map_user_memory_prot(struct viv_conn *conn, void *memory, size_t size, int prot, viv_usermem_t *info, viv_addr_t *address)
+int viv_map_user_memory_prot(struct etna_device *conn, void *memory, size_t size, int prot, viv_usermem_t *info, viv_addr_t *address)
 {
     struct viv_membuf_map map = {
 #ifdef GCABI_HAS_HARDWARE_TYPE
@@ -717,7 +725,7 @@ int viv_map_user_memory_prot(struct viv_conn *conn, void *memory, size_t size, i
     return VIV_STATUS_OK;
 }
 
-int viv_map_user_memory(struct viv_conn *conn, void *memory, size_t size, viv_usermem_t *info, viv_addr_t *address)
+int viv_map_user_memory(struct etna_device *conn, void *memory, size_t size, viv_usermem_t *info, viv_addr_t *address)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_MAP_USER_MEMORY,
@@ -737,7 +745,7 @@ int viv_map_user_memory(struct viv_conn *conn, void *memory, size_t size, viv_us
     return status;
 }
 
-int viv_unmap_user_memory(struct viv_conn *conn, void *memory, size_t size, viv_usermem_t info, viv_addr_t address)
+int viv_unmap_user_memory(struct etna_device *conn, void *memory, size_t size, viv_usermem_t info, viv_addr_t address)
 {
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_UNMAP_USER_MEMORY,
@@ -753,7 +761,7 @@ int viv_unmap_user_memory(struct viv_conn *conn, void *memory, size_t size, viv_
     return viv_invoke(conn, &id);
 }
 
-int viv_read_register(struct viv_conn *conn, uint32_t address, uint32_t *data)
+int viv_read_register(struct etna_device *conn, uint32_t address, uint32_t *data)
 {
     gcsHAL_INTERFACE id;
     int rv;
@@ -764,7 +772,7 @@ int viv_read_register(struct viv_conn *conn, uint32_t address, uint32_t *data)
     return rv;
 }
 
-int viv_write_register(struct viv_conn *conn, uint32_t address, uint32_t data)
+int viv_write_register(struct etna_device *conn, uint32_t address, uint32_t data)
 {
     gcsHAL_INTERFACE id;
     id.command = gcvHAL_WRITE_REGISTER;
@@ -774,7 +782,7 @@ int viv_write_register(struct viv_conn *conn, uint32_t address, uint32_t data)
 }
 
 /* Fence emulation */
-int _viv_fence_new(struct viv_conn *conn, uint32_t *fence_out, int *signal_out)
+int _viv_fence_new(struct etna_device *conn, uint32_t *fence_out, int *signal_out)
 {
     /* Request fence and queue signal */
     uint32_t fence = conn->next_fence_id++;
@@ -806,14 +814,14 @@ int _viv_fence_new(struct viv_conn *conn, uint32_t *fence_out, int *signal_out)
     return VIV_STATUS_OK;
 }
 
-void _viv_fence_mark_pending(struct viv_conn *conn, uint32_t fence)
+void _viv_fence_mark_pending(struct etna_device *conn, uint32_t fence)
 {
     if((conn->next_fence_id - fence) >= VIV_NUM_FENCE_SIGNALS)
         return; /* too old */
     conn->fences_pending |= (1<<(fence % VIV_NUM_FENCE_SIGNALS));
 }
 
-int viv_fence_finish(struct viv_conn *conn, uint32_t fence, uint32_t timeout)
+int viv_fence_finish(struct etna_device *conn, uint32_t fence, uint32_t timeout)
 {
     int signal;
     int rv;
@@ -869,3 +877,17 @@ unlock_and_ok: /* unlock mutex and return OK */
     return VIV_STATUS_OK;
 }
 
+struct etna_device *etna_device_new_dup(int fd)
+{
+    return NULL; /* TODO */
+}
+
+struct etna_device *etna_device_ref(struct etna_device *dev)
+{
+    return NULL; /* TODO */
+}
+
+int etna_device_fd(struct etna_device *dev)
+{
+    return dev->fd;
+}

@@ -33,11 +33,11 @@
 
 struct _gcsQUEUE;
 struct _gcsHAL_INTERFACE;
-struct etna_ctx;
+struct etna_cmd_stream;
 
 /* command queue */
 struct etna_queue {
-    struct etna_ctx *ctx;
+    struct etna_cmd_stream *ctx;
     struct _gcsQUEUE *queue;
     struct _gcsQUEUE *last;
     int count;
@@ -46,7 +46,7 @@ struct etna_queue {
 
 /* Initialize and allocate a queue.
  */
-int etna_queue_create(struct etna_ctx *ctx, struct etna_queue **queue_out);
+int etna_queue_create(struct etna_cmd_stream *ctx, struct etna_queue **queue_out);
 
 /* Return pointer to first element in queue, or NULL if queue is empty, and
  * empty the queue so that it can be used for the next flush.

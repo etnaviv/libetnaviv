@@ -10,7 +10,7 @@
 /* Maximum number of kernel commands in queue */
 #define ETNA_QUEUE_CAPACITY (64)
 
-int etna_queue_create(struct etna_ctx *ctx, struct etna_queue **queue_out)
+int etna_queue_create(struct etna_cmd_stream *ctx, struct etna_queue **queue_out)
 {
     struct etna_queue *queue = ETNA_CALLOC_STRUCT(etna_queue);
     if(queue == NULL)

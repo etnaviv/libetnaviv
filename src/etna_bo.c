@@ -52,6 +52,7 @@ enum etna_bo_type {
 
 /* Structure describing a block of video or user memory */
 struct etna_bo {
+    struct etna_device *conn;
     enum etna_bo_type bo_type;
     size_t size;
     enum viv_surf_type type;
@@ -124,7 +125,7 @@ static const char *etna_bo_surf_type(struct etna_bo *mem)
 #endif
 
 /* Lock (map) memory into both CPU and GPU memory space. */
-static int etna_bo_lock(struct viv_conn *conn, struct etna_bo *mem)
+static int etna_bo_lock(struct etna_device *conn, struct etna_bo *mem)
 {
     if(mem == NULL) return ETNA_INVALID_ADDR;
     if(mem->logical != NULL) return ETNA_ALREADY_LOCKED;
@@ -144,7 +145,7 @@ static int etna_bo_lock(struct viv_conn *conn, struct etna_bo *mem)
 }
 
 /* Unlock memory from both CPU and GPU memory space */
-static int etna_bo_unlock(struct viv_conn *conn, struct etna_bo *mem, struct etna_queue *queue)
+static int etna_bo_unlock(struct etna_device *conn, struct etna_bo *mem, struct etna_queue *queue)
 {
     if(mem == NULL) return ETNA_INVALID_ADDR;
     int async = 0;
@@ -178,10 +179,11 @@ static int etna_bo_unlock(struct viv_conn *conn, struct etna_bo *mem, struct etn
     return ETNA_OK;
 }
 
-struct etna_bo* etna_bo_new(struct viv_conn *conn, size_t bytes, uint32_t flags)
+struct etna_bo* etna_bo_new(struct etna_device *conn, uint32_t bytes, uint32_t flags)
 {
     struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
     if(mem == NULL) return NULL;
+    mem->conn = conn;
 
     if((flags & DRM_ETNA_GEM_TYPE_MASK) == DRM_ETNA_GEM_TYPE_CMD)
     {
@@ -232,18 +234,19 @@ struct etna_bo* etna_bo_new(struct viv_conn *conn, size_t bytes, uint32_t flags)
         int status = etna_bo_lock(conn, mem);
         if(status != ETNA_OK)
         {
-            etna_bo_del(conn, mem, NULL);
+            etna_bo_del_ext(mem, NULL);
             return NULL;
         }
     }
     return mem;
 }
 
-struct etna_bo *etna_bo_from_usermem_prot(struct viv_conn *conn, void *memory, size_t size, int prot)
+struct etna_bo *etna_bo_from_usermem_prot(struct etna_device *conn, void *memory, size_t size, int prot)
 {
     struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
     if(mem == NULL) return NULL;
 
+    mem->conn = conn;
     mem->bo_type = ETNA_BO_TYPE_USERMEM;
     mem->logical = memory;
     mem->size = size;
@@ -257,11 +260,12 @@ struct etna_bo *etna_bo_from_usermem_prot(struct viv_conn *conn, void *memory, s
     return mem;
 }
 
-struct etna_bo *etna_bo_from_usermem(struct viv_conn *conn, void *memory, size_t size)
+struct etna_bo *etna_bo_from_usermem(struct etna_device *conn, void *memory, size_t size)
 {
     struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
     if(mem == NULL) return NULL;
 
+    mem->conn = conn;
     mem->bo_type = ETNA_BO_TYPE_USERMEM;
     mem->logical = memory;
     mem->size = size;
@@ -275,11 +279,13 @@ struct etna_bo *etna_bo_from_usermem(struct viv_conn *conn, void *memory, size_t
     return mem;
 }
 
-struct etna_bo *etna_bo_from_fbdev(struct viv_conn *conn, int fd, size_t offset, size_t size)
+struct etna_bo *etna_bo_from_fbdev(struct etna_device *conn, int fd, size_t offset, size_t size)
 {
     struct fb_fix_screeninfo finfo;
     struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
     if(mem == NULL) return NULL;
+
+    mem->conn = conn;
 
     if(ioctl(fd, FBIOGET_FSCREENINFO, &finfo))
         goto error;
@@ -295,11 +301,12 @@ error:
     return NULL;
 }
 
-struct etna_bo *etna_bo_from_name(struct viv_conn *conn, uint32_t name)
+struct etna_bo *etna_bo_from_name(struct etna_device *conn, uint32_t name)
 {
     struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
     if(mem == NULL) return NULL;
 
+    mem->conn = conn;
     mem->bo_type = ETNA_BO_TYPE_VIDMEM_EXTERNAL;
     mem->node = (viv_node_t)name;
 
@@ -313,11 +320,12 @@ struct etna_bo *etna_bo_from_name(struct viv_conn *conn, uint32_t name)
     return mem;
 }
 
-struct etna_bo *etna_bo_from_dmabuf(struct viv_conn *conn, int fd, int prot)
+struct etna_bo *etna_bo_from_dmabuf_prot(struct etna_device *conn, int fd, int prot)
 {
     struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
     if(mem == NULL) return NULL;
 
+    mem->conn = conn;
     mem->bo_type = ETNA_BO_TYPE_DMABUF;
 
     if(viv_map_dmabuf(conn, fd, &mem->usermem_info, &mem->address, prot)!=0)
@@ -329,16 +337,27 @@ struct etna_bo *etna_bo_from_dmabuf(struct viv_conn *conn, int fd, int prot)
     return mem;
 }
 
+struct etna_bo *etna_bo_from_dmabuf(struct etna_device *conn, int fd)
+{
+    return etna_bo_from_dmabuf_prot(conn, fd, 0);
+}
+
 struct etna_bo *etna_bo_ref(struct etna_bo *bo)
 {
     /* TODO */
     return bo;
 }
 
-int etna_bo_del(struct viv_conn *conn, struct etna_bo *mem, struct etna_queue *queue)
+void etna_bo_del(struct etna_bo *mem)
+{
+    etna_bo_del_ext(mem, NULL);
+}
+
+int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue)
 {
     int rv = ETNA_OK;
     if(mem == NULL) return ETNA_OK;
+    struct etna_device *conn = mem->conn;
     switch(mem->bo_type)
     {
     case ETNA_BO_TYPE_VIDMEM:
@@ -425,7 +444,7 @@ void *etna_bo_map(struct etna_bo *bo)
     return bo->logical;
 }
 
-int etna_bo_cpu_prep(struct etna_bo *bo, struct etna_ctx *pipe, uint32_t op)
+int etna_bo_cpu_prep(struct etna_bo *bo, uint32_t op)
 {
     /* TODO */
     return 0;
@@ -441,3 +460,8 @@ uint32_t etna_bo_gpu_address(struct etna_bo *bo)
     return bo->address;
 }
 
+/* Missing:
+
+struct etna_bo *etna_bo_from_handle(struct etna_device *dev,
+		uint32_t handle, uint32_t size);
+*/

@@ -33,7 +33,7 @@
 #endif
 
 /* Some kind of RS flush, used in the older drivers */
-void etna_warm_up_rs(struct etna_ctx *cmdbuf, viv_addr_t aux_rt_physical, viv_addr_t aux_rt_ts_physical)
+void etna_warm_up_rs(struct etna_cmd_stream *cmdbuf, viv_addr_t aux_rt_physical, viv_addr_t aux_rt_ts_physical)
 {
     etna_set_state(cmdbuf, VIVS_TS_COLOR_STATUS_BASE, aux_rt_ts_physical); /* ADDR_G */
     etna_set_state(cmdbuf, VIVS_TS_COLOR_SURFACE_BASE, aux_rt_physical); /* ADDR_F */
@@ -58,7 +58,7 @@ void etna_warm_up_rs(struct etna_ctx *cmdbuf, viv_addr_t aux_rt_physical, viv_ad
 #define SET_STATE(addr, value) cs->addr = (value)
 #define SET_STATE_FIXP(addr, value) cs->addr = (value)
 #define SET_STATE_F32(addr, value) cs->addr = f32_to_u32(value)
-void etna_compile_rs_state(struct etna_ctx *restrict ctx, struct compiled_rs_state *cs, const struct rs_state *rs)
+void etna_compile_rs_state(struct etna_cmd_stream *restrict ctx, struct compiled_rs_state *cs, const struct rs_state *rs)
 {
     /* TILED and SUPERTILED layout have their strides multiplied with 4 in RS */
     unsigned source_stride_shift = (rs->source_tiling != ETNA_LAYOUT_LINEAR) ? 2 : 0;
@@ -130,11 +130,11 @@ void etna_compile_rs_state(struct etna_ctx *restrict ctx, struct compiled_rs_sta
 
 /* submit RS state, without any processing and no dependence on context
  * except TS if this is a source-to-destination blit. */
-void etna_submit_rs_state(struct etna_ctx *restrict ctx, const struct compiled_rs_state *cs)
+void etna_submit_rs_state(struct etna_cmd_stream *restrict ctx, const struct compiled_rs_state *cs)
 {
     if (ctx->conn->chip.pixel_pipes == 1)
     {
-        etna_reserve(ctx, 22);
+        etna_cmd_stream_reserve(ctx, 22);
         /*0 */ ETNA_EMIT_LOAD_STATE(ctx, VIVS_RS_CONFIG>>2, 5, 0);
         /*1 */ ETNA_EMIT(ctx, cs->RS_CONFIG);
         /*2 */ ETNA_EMIT(ctx, cs->RS_SOURCE_ADDR);
@@ -160,7 +160,7 @@ void etna_submit_rs_state(struct etna_ctx *restrict ctx, const struct compiled_r
     }
     else if (ctx->conn->chip.pixel_pipes == 2)
     {
-        etna_reserve(ctx, 34); /* worst case - both pipes multi=1 */
+        etna_cmd_stream_reserve(ctx, 34); /* worst case - both pipes multi=1 */
         /*0 */ ETNA_EMIT_LOAD_STATE(ctx, VIVS_RS_CONFIG>>2, 1, 0);
         /*1 */ ETNA_EMIT(ctx, cs->RS_CONFIG);
         /*2 */ ETNA_EMIT_LOAD_STATE(ctx, VIVS_RS_SOURCE_STRIDE>>2, 1, 0);

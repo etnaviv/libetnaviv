@@ -65,7 +65,7 @@ struct viv_profile_counter_info *viv_get_profile_counter_info(enum viv_profile_c
     return &viv_profile_counters[id];
 }
 
-int viv_read_profile_counters_3d(struct viv_conn *conn, uint32_t *out)
+int viv_read_profile_counters_3d(struct etna_device *conn, uint32_t *out)
 {
 #if VIVANTE_PROFILER
     gcsHAL_INTERFACE id = {
@@ -129,7 +129,7 @@ int viv_read_profile_counters_3d(struct viv_conn *conn, uint32_t *out)
 #endif
 }
 
-int viv_read_profile_counters_2d(struct viv_conn *conn, uint32_t *out)
+int viv_read_profile_counters_2d(struct etna_device *conn, uint32_t *out)
 {
 #if VIVANTE_PROFILER
     gcsHAL_INTERFACE id = {
@@ -150,7 +150,7 @@ int viv_read_profile_counters_2d(struct viv_conn *conn, uint32_t *out)
 #endif
 }
 
-void viv_get_counters_reset_after_read(struct viv_conn *conn, bool *counters)
+void viv_get_counters_reset_after_read(struct etna_device *conn, bool *counters)
 {
     /* Either dove driver doesn't reset perf counters properly, or
      * is it the hw, I'm not sure */

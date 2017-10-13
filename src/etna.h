@@ -27,6 +27,8 @@
 #ifndef H_ETNA
 #define H_ETNA
 
+#include "etnaviv_drmif.h"
+
 #include <common.xml.h>
 #include <cmdstream.xml.h>
 #include <etna_util.h>
@@ -38,10 +40,6 @@
 #include <stdio.h>
 #endif
 #include <string.h> /* for memcpy */
-
-/* Number of command buffers, to be used in a circular fashion.
- */
-#define NUM_COMMAND_BUFFERS 5
 
 /* Special command buffer ids */
 #define ETNA_NO_BUFFER (-1)
@@ -78,54 +76,11 @@ enum etna_status {
     ETNA_ALREADY_LOCKED = 1004
 };
 
-/* HW pipes.
- * Used by GPU to tell front-end what back-end modules to synchronize operations with.
- */
-enum etna_pipe {
-    ETNA_PIPE_3D = 0,
-    ETNA_PIPE_2D = 1
-};
-
 struct _gcoCMDBUF;
 struct etna_queue;
-struct etna_ctx;
+struct etna_cmd_stream;
 struct etna_bo;
 
-struct etna_cmdbuf {
-    /* sync signal for command buffer */
-    int sig_id;
-    struct etna_bo *bo;
-};
-
-struct etna_ctx {
-    /* Driver connection */
-    struct viv_conn *conn;
-    /* Keep track of current command buffer and writing location.
-     * The offset is kept here instead of in cmdbuf[cur_buf].offset to save an level of indirection
-     * when building the buffer. It is only copied to the command buffer before submission to the kernel
-     * in etna_flush().
-     * Also, this offset is in terms of 32 bit words, instead of in bytes, so it can be directly used to index
-     * into buf.
-     */
-    uint32_t *buf;
-    uint32_t offset;
-    /* Current buffer id (index into cmdbuf) */
-    int cur_buf;
-    /* Stored current buffer id when building context */
-    int stored_buf;
-    /* Synchronization signal for finish() */
-    int sig_id;
-    /* Structures for kernel */
-    struct _gcoCMDBUF *cmdbuf[NUM_COMMAND_BUFFERS];
-    /* Extra information per command buffer */
-    struct etna_cmdbuf cmdbufi[NUM_COMMAND_BUFFERS];
-    /* number of unsignalled flushes (used to work around kernel bug) */
-    int flushes;
-    /* command queue */
-    struct etna_queue *queue;
-    /* context */
-    viv_context_t ctx;
-};
 
 /** Convenience macros for command buffer building, remember to reserve enough space before using them */
 /* Queue load state command header (queues one word) */
@@ -174,127 +129,90 @@ struct etna_ctx {
 /* Create new etna context.
  * Return error when creation fails.
  */
-int etna_create(struct viv_conn *conn, struct etna_ctx **ctx);
-
-/* Free an etna context. */
-int etna_free(struct etna_ctx *ctx);
-
-/* internal (non-inline) part of etna_reserve.
-   only to be used from etna_reserve. */
-int _etna_reserve_internal(struct etna_ctx *ctx, size_t n);
-
-/* Reserve space for writing N 32-bit command words. It is allowed to reserve
- * more than is written, but not less, as this will result in a buffer overflow.
- * ctx->offset will point to the reserved area on succesful return.
- * It will always be 64-bit aligned so that a new command can be started.
- * @return OK on success, error code otherwise
- */
-static inline int etna_reserve(struct etna_ctx *ctx, size_t n)
-{
-    if(ctx == NULL)
-        return ETNA_INVALID_ADDR;
-    if(ctx->cur_buf != ETNA_NO_BUFFER)
-    {
-#ifdef CMD_DEBUG
-        printf("etna_reserve: %i at offset %i\n", (int)n, (int)ctx->offset);
-#endif
-        ETNA_ALIGN(ctx);
-
-        if(((ctx->offset + n)*4 + END_COMMIT_CLEARANCE) <= COMMAND_BUFFER_SIZE) /* enough bytes free in buffer */
-        {
-            return ETNA_OK;
-        }
-    }
-    return _etna_reserve_internal(ctx, n);
-}
+int etna_create(struct etna_device *conn, struct etna_cmd_stream **ctx);
 
 /* Set GPU pipe (ETNA_PIPE_2D, ETNA_PIPE_3D).
  */
-int etna_set_pipe(struct etna_ctx *ctx, enum etna_pipe pipe);
+int etna_set_pipe(struct etna_cmd_stream *ctx, enum etna_pipe_id pipe);
 
 /* Send currently queued commands to kernel.
  * @return OK on success, error code otherwise
  */
-int etna_flush(struct etna_ctx *ctx, uint32_t *fence_out);
-
-/* Send currently queued commands to kernel, then block for them to finish.
- * @return OK on success, error code otherwise
- */
-int etna_finish(struct etna_ctx *ctx);
+int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out);
 
 /* Queue a semaphore (but don't stall).
  * from, to are values from SYNC_RECIPIENT_*.
  * @return OK on success, error code otherwise
  */
-int etna_semaphore(struct etna_ctx *ctx, uint32_t from, uint32_t to);
+int etna_semaphore(struct etna_cmd_stream *ctx, uint32_t from, uint32_t to);
 
 /* Queue a semaphore and stall.
  * from, to are values from SYNC_RECIPIENT_*.
  * @return OK on success, error code otherwise
  */
-int etna_stall(struct etna_ctx *ctx, uint32_t from, uint32_t to);
+int etna_stall(struct etna_cmd_stream *ctx, uint32_t from, uint32_t to);
 
 /* print command buffer for debugging */
-void etna_dump_cmd_buffer(struct etna_ctx *ctx);
+void etna_dump_cmd_buffer(struct etna_cmd_stream *ctx);
 
 /**
  * Direct state setting functions; these can be used for convenience. When absolute performance
  * is required while updating big blocks of state at once, it is recommended to use the
- * ETNA_EMIT_* macros and etna_reserve directly.
+ * ETNA_EMIT_* macros and etna_cmd_stream_reserve directly.
  */
-static inline void etna_set_state(struct etna_ctx *cmdbuf, uint32_t address, uint32_t value)
+static inline void etna_set_state(struct etna_cmd_stream *cmdbuf, uint32_t address, uint32_t value)
 {
-    etna_reserve(cmdbuf, 2);
+    etna_cmd_stream_reserve(cmdbuf, 2);
     ETNA_EMIT_LOAD_STATE(cmdbuf, address >> 2, 1, 0);
     ETNA_EMIT(cmdbuf, value);
 }
 
-static inline void etna_set_state_multi(struct etna_ctx *cmdbuf, uint32_t base, uint32_t num, const uint32_t *values)
+static inline void etna_set_state_multi(struct etna_cmd_stream *cmdbuf, uint32_t base, uint32_t num, const uint32_t *values)
 {
     if(num == 0) return;
-    etna_reserve(cmdbuf, 1 + num + 1); /* 1 extra for potential alignment */
+    etna_cmd_stream_reserve(cmdbuf, 1 + num + 1); /* 1 extra for potential alignment */
     ETNA_EMIT_LOAD_STATE(cmdbuf, base >> 2, num, 0);
     memcpy(&cmdbuf->buf[cmdbuf->offset], values, 4*num);
     cmdbuf->offset += num;
     ETNA_ALIGN(cmdbuf);
 }
 
-static inline void etna_set_state_f32(struct etna_ctx *cmdbuf, uint32_t address, float value)
+static inline void etna_set_state_f32(struct etna_cmd_stream *cmdbuf, uint32_t address, float value)
 {
     etna_set_state(cmdbuf, address, etna_f32_to_u32(value));
 }
-static inline void etna_set_state_fixp(struct etna_ctx *cmdbuf, uint32_t address, uint32_t value)
+static inline void etna_set_state_fixp(struct etna_cmd_stream *cmdbuf, uint32_t address, uint32_t value)
 {
-    etna_reserve(cmdbuf, 2);
+    etna_cmd_stream_reserve(cmdbuf, 2);
     ETNA_EMIT_LOAD_STATE(cmdbuf, address >> 2, 1, 1);
     ETNA_EMIT(cmdbuf, value);
 }
-static inline void etna_set_state_fixp_multi(struct etna_ctx *cmdbuf, uint32_t address, uint32_t num, uint32_t *values)
+static inline void etna_set_state_fixp_multi(struct etna_cmd_stream *cmdbuf, uint32_t address, uint32_t num, uint32_t *values)
 {
-    etna_reserve(cmdbuf, 1 + num + 1); /* 1 extra for potential alignment */
+    etna_cmd_stream_reserve(cmdbuf, 1 + num + 1); /* 1 extra for potential alignment */
     ETNA_EMIT_LOAD_STATE(cmdbuf, address >> 2, num, 1);
     memcpy(&cmdbuf->buf[cmdbuf->offset], values, 4*num);
     cmdbuf->offset += num;
     ETNA_ALIGN(cmdbuf);
 }
-static inline void etna_draw_primitives(struct etna_ctx *cmdbuf, uint32_t primitive_type, uint32_t start, uint32_t count)
+static inline void etna_draw_primitives(struct etna_cmd_stream *cmdbuf, uint32_t primitive_type, uint32_t start, uint32_t count)
 {
 #ifdef CMD_DEBUG
     printf("draw_primitives %08x %08x %08x %08x\n",
             VIV_FE_DRAW_PRIMITIVES_HEADER_OP_DRAW_PRIMITIVES,
             primitive_type, start, count);
 #endif
-    etna_reserve(cmdbuf, 4);
+    etna_cmd_stream_reserve(cmdbuf, 4);
     ETNA_EMIT_DRAW_PRIMITIVES(cmdbuf, primitive_type, start, count);
 }
-static inline void etna_draw_indexed_primitives(struct etna_ctx *cmdbuf, uint32_t primitive_type, uint32_t start, uint32_t count, uint32_t offset)
+static inline void etna_draw_indexed_primitives(struct etna_cmd_stream *cmdbuf, uint32_t primitive_type, uint32_t start, uint32_t count, uint32_t offset)
 {
 #ifdef CMD_DEBUG
     printf("draw_primitives_indexed %08x %08x %08x %08x\n",
             VIV_FE_DRAW_PRIMITIVES_HEADER_OP_DRAW_INDEXED_PRIMITIVES,
             primitive_type, start, count);
 #endif
-    etna_reserve(cmdbuf, 5+1);
+    etna_cmd_stream_reserve(cmdbuf, 5+1);
     ETNA_EMIT_DRAW_INDEXED_PRIMITIVES(cmdbuf, primitive_type, start, count, offset);
 }
 
@@ -324,7 +242,7 @@ static inline void etna_draw_indexed_primitives(struct etna_ctx *cmdbuf, uint32_
  * and open a new one.
  */
 #define ETNA_COALESCE_STATE_OPEN(max_updates) \
-    etna_reserve(ctx, (max_updates) * 2); \
+    etna_cmd_stream_reserve(ctx, (max_updates) * 2); \
     span_start = ctx->offset; \
     last_reg = last_fixp = 0;
 

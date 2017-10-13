@@ -31,7 +31,10 @@ libetnaviv_la_SOURCES = \
 			etna_queue.c \
 			etna_tex.c \
 			etna_fb.c \
-			etna_rs.c
+			etna_rs.c \
+			etna_pipe.c \
+			etna_gpu.c \
+			etna_drm_emu.c
 
 libetnaviv_la_includedir = $(includedir)/etnaviv
 libetnaviv_la_include_HEADERS = \
