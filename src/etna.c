@@ -461,13 +461,6 @@ int etna_stall(struct etna_ctx *ctx, uint32_t from, uint32_t to)
     return ETNA_OK;
 }
 
-int etna_set_context_cb(struct etna_ctx *ctx, etna_context_snapshot_cb_t snapshot_cb, void *data)
-{
-    ctx->ctx_cb = snapshot_cb;
-    ctx->ctx_cb_data = data;
-    return ETNA_OK;
-}
-
 void etna_dump_cmd_buffer(struct etna_ctx *ctx)
 {
     uint32_t start_offset = ctx->cmdbuf[ctx->cur_buf]->startOffset/4 + 8;

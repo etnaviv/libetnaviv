@@ -91,15 +91,6 @@ struct etna_queue;
 struct etna_ctx;
 struct etna_bo;
 
-struct etna_context_info {
-    size_t bytes;
-    viv_addr_t physical;
-    void *logical;
-};
-
-typedef int (*etna_context_snapshot_cb_t)(void *data, struct etna_ctx *ctx,
-        enum etna_pipe *initial_pipe, enum etna_pipe *final_pipe);
-
 struct etna_cmdbuf {
     /* sync signal for command buffer */
     int sig_id;
@@ -130,13 +121,10 @@ struct etna_ctx {
     struct etna_cmdbuf cmdbufi[NUM_COMMAND_BUFFERS];
     /* number of unsignalled flushes (used to work around kernel bug) */
     int flushes;
-    /* context */
-    viv_context_t ctx;
-    struct etna_bo *ctx_bo;
-    etna_context_snapshot_cb_t ctx_cb;
-    void *ctx_cb_data;
     /* command queue */
     struct etna_queue *queue;
+    /* context */
+    viv_context_t ctx;
 };
 
 /** Convenience macros for command buffer building, remember to reserve enough space before using them */
@@ -245,14 +233,6 @@ int etna_semaphore(struct etna_ctx *ctx, uint32_t from, uint32_t to);
  * @return OK on success, error code otherwise
  */
 int etna_stall(struct etna_ctx *ctx, uint32_t from, uint32_t to);
-
-/** Set callback for building context before flush.
- * Any etna state update commands called inside this callback function will be
- * part of context.
- * @note This callback is never called if the kernel driver does not use contexts.
- * @return OK on success, error code otherwise
- */
-int etna_set_context_cb(struct etna_ctx *ctx, etna_context_snapshot_cb_t snapshot_cb, void *data);
 
 /* print command buffer for debugging */
 void etna_dump_cmd_buffer(struct etna_ctx *ctx);
