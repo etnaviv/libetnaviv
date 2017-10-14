@@ -203,6 +203,7 @@ struct etna_bo* etna_bo_new(struct etna_device *conn, uint32_t bytes, uint32_t f
         /* Convert GEM bits to surface type */
         switch(flags & DRM_ETNA_GEM_TYPE_MASK)
         {
+        case DRM_ETNA_GEM_TYPE_GEN: type = VIV_SURF_UNKNOWN; break;
         case DRM_ETNA_GEM_TYPE_IDX: type = VIV_SURF_INDEX; break;
         case DRM_ETNA_GEM_TYPE_VTX: type = VIV_SURF_VERTEX; break;
         case DRM_ETNA_GEM_TYPE_TEX: type = VIV_SURF_TEXTURE; break;

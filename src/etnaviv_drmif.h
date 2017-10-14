@@ -70,7 +70,7 @@ enum etna_param_id {
 };
 
 /* bo create flags */
-#define DRM_ETNA_GEM_TYPE_CMD        0x00000000 /* Command buffer */
+#define DRM_ETNA_GEM_TYPE_GEN        0x00000000 /* General, undefined */
 #define DRM_ETNA_GEM_TYPE_IDX        0x00000001 /* Index buffer */
 #define DRM_ETNA_GEM_TYPE_VTX        0x00000002 /* Vertex buffer */
 #define DRM_ETNA_GEM_TYPE_TEX        0x00000003 /* Texture */
@@ -81,6 +81,7 @@ enum etna_param_id {
 #define DRM_ETNA_GEM_TYPE_TS         0x00000008 /* Tile status cache */
 #define DRM_ETNA_GEM_TYPE_TXD        0x00000009 /* Texture descriptor */
 #define DRM_ETNA_GEM_TYPE_IC         0x0000000A /* Instruction cache (Shader code) */
+#define DRM_ETNA_GEM_TYPE_CMD        0x0000000B /* Command buffer */
 #define DRM_ETNA_GEM_TYPE_MASK       0x0000000F
 
 /* bo flags: */
