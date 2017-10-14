@@ -3,7 +3,7 @@ Makefile.in
 aclocal.m4
 config.status
 libtool
-libetnaviv.pc
+libfakedrm_etnaviv.pc
 autom4te.cache/
 build-aux/
 build/

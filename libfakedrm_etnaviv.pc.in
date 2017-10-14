@@ -3,8 +3,8 @@ exec_prefix=@exec_prefix@
 libdir=@libdir@
 includedir=@includedir@
 
-Name: libetnaviv
+Name: libfakedrm_etnaviv
 Description: Userspace interface to kernel galcore driver 
 Version: @PACKAGE_VERSION@
-Libs: -L${libdir} -letnaviv
+Libs: -L${libdir} -lfakedrm_etnaviv
 Cflags: -I${includedir}/etnaviv

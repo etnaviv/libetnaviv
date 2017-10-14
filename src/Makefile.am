@@ -1,5 +1,5 @@
 #
-# libetnaviv - etnaviv userspace library
+# libfakedrm_etnaviv - etnaviv userspace library
 #
 # Written by Wladimir J. van der Laan 2013
 #
@@ -15,15 +15,15 @@
 AM_CFLAGS = $(filter-out -Wnested-externs -Wcast-qual -Wredundant-decls \
         -Werror=write-strings -Wshadow,$(CWARNFLAGS)) \
         -std=gnu99 -Wall $(GALCORE_CFLAGS) $(VIVHOOK_CFLAGS) \
-	-I$(top_srcdir)/src
+	-I$(top_srcdir)/src -I$(top_srcdir)/include
 
-libetnaviv_la_LTLIBRARIES = libetnaviv.la
-libetnaviv_ladir = $(libdir)
-libetnaviv_la_CFLAGS = $(AM_CFLAGS)
-libetnaviv_la_LDFLAGS = -version-info 1:0:0 -no-undefined 
-libetnaviv_la_LIBADD = $(GALCORE_LIBS) $(VIVHOOK_LIBS)
+libfakedrm_etnaviv_la_LTLIBRARIES = libfakedrm_etnaviv.la
+libfakedrm_etnaviv_ladir = $(libdir)
+libfakedrm_etnaviv_la_CFLAGS = $(AM_CFLAGS)
+libfakedrm_etnaviv_la_LDFLAGS = -version-info 1:0:0 -no-undefined 
+libfakedrm_etnaviv_la_LIBADD = $(GALCORE_LIBS) $(VIVHOOK_LIBS)
 
-libetnaviv_la_SOURCES = \
+libfakedrm_etnaviv_la_SOURCES = \
 			etna.c \
 			viv.c \
 			viv_profile.c \
@@ -36,8 +36,8 @@ libetnaviv_la_SOURCES = \
 			etna_gpu.c \
 			etna_drm_emu.c
 
-libetnaviv_la_includedir = $(includedir)/etnaviv
-libetnaviv_la_include_HEADERS = \
+libfakedrm_etnaviv_la_includedir = $(includedir)/etnaviv
+noinst_HEADERS = \
 			cmdstream.xml.h \
 			common.xml.h \
 			etna_bo.h \
@@ -57,3 +57,10 @@ libetnaviv_la_include_HEADERS = \
 			viv.h \
 			viv_internal.h \
 			viv_profile.h
+libfakedrm_etnaviv_la_include_HEADERS = \
+			../include/drm_fourcc.h \
+			../include/drm.h \
+			../include/drm_mode.h \
+			../include/etnaviv_drmif.h \
+			../include/xf86drm.h \
+			../include/libsync.h

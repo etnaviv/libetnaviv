@@ -5,4 +5,4 @@ AM_CFLAGS = $(WARN_CFLAGS) $(DEBUG_CFLAGS)
 SUBDIRS=src
 
 pkgconfigdir = @pkgconfigdir@
-pkgconfig_DATA = libetnaviv.pc
+pkgconfig_DATA = libfakedrm_etnaviv.pc

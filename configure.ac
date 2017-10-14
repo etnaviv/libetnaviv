@@ -88,6 +88,6 @@ AC_SUBST(pkgconfigdir)
 AC_CONFIG_FILES([
 	Makefile
 	src/Makefile
-	libetnaviv.pc
+	libfakedrm_etnaviv.pc
 ])
 AC_OUTPUT

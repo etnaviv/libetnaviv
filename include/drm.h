@@ -716,7 +716,7 @@ struct drm_syncobj_handle {
 }
 #endif
 
-//#include "drm_mode.h"
+#include "drm_mode.h"
 
 #if defined(__cplusplus)
 extern "C" {
