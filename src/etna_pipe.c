@@ -3,6 +3,10 @@
 
 struct etna_pipe *etna_pipe_new(struct etna_gpu *gpu, enum etna_pipe_id id)
 {
+    if (id != ETNA_PIPE_3D) {
+        /* Only handle 3D pipe for now, as viv hardcodes VIV_HW_3D */
+        return NULL;
+    }
     struct etna_pipe *pipe = ETNA_CALLOC_STRUCT(etna_pipe);
     pipe->gpu = gpu;
     pipe->id = id;

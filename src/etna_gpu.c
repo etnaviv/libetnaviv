@@ -4,10 +4,14 @@
 
 struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 {
-    struct etna_gpu *gpu = ETNA_CALLOC_STRUCT(etna_gpu);
-    gpu->dev = dev;
-    gpu->core = core;
-    return gpu;
+    if (core == 0) {
+        struct etna_gpu *gpu = ETNA_CALLOC_STRUCT(etna_gpu);
+        gpu->dev = dev;
+        gpu->core = core;
+        return gpu;
+    } else {
+        return NULL;
+    }
 }
 
 void etna_gpu_del(struct etna_gpu *gpu)
