@@ -33,18 +33,9 @@
 struct etna_queue;
 struct etna_bo;
 
-/** Missing in etnaviv_drmif.h */
+/** Internal only */
 
 int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue);
-
-/* Map user memory (which may be write protected) into GPU memory space */
-struct etna_bo *etna_bo_from_usermem_prot(struct etna_device *conn, void *memory, size_t size, int prot);
-
-/* Map user memory into GPU memory space */
-struct etna_bo *etna_bo_from_usermem(struct etna_device *conn, void *memory, size_t size);
-
-/* Buffer object from framebuffer range */
-struct etna_bo *etna_bo_from_fbdev(struct etna_device *conn, int fd, size_t offset, size_t size);
 
 /* Temporary: get GPU address of buffer */
 uint32_t etna_bo_gpu_address(struct etna_bo *bo);

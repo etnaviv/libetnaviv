@@ -30,6 +30,8 @@
 #include <xf86drm.h>
 #include <stdint.h>
 
+#define LIBETNAVIV_BO_EXTENSIONS
+
 struct etna_bo;
 struct etna_pipe;
 struct etna_gpu;
@@ -140,6 +142,14 @@ void * etna_bo_map(struct etna_bo *bo);
 int etna_bo_cpu_prep(struct etna_bo *bo, uint32_t op);
 void etna_bo_cpu_fini(struct etna_bo *bo);
 
+/* Map user memory into GPU memory space */
+struct etna_bo *etna_bo_from_usermem(struct etna_device *conn, void *memory, size_t size);
+
+/* Map user memory (which may be write protected) into GPU memory space */
+struct etna_bo *etna_bo_from_usermem_prot(struct etna_device *conn, void *memory, size_t size, int prot);
+
+/* Buffer object from framebuffer range */
+struct etna_bo *etna_bo_from_fbdev(struct etna_device *conn, int fd, size_t offset, size_t size);
 
 /* cmd stream functions:
  */

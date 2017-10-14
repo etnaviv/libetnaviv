@@ -265,6 +265,8 @@ struct etna_bo *etna_bo_from_usermem(struct etna_device *conn, void *memory, siz
     struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
     if(mem == NULL) return NULL;
 
+    /* TODO: this doesn't work on recent drivers - need to use wrap user memory instead */
+
     mem->conn = conn;
     mem->bo_type = ETNA_BO_TYPE_USERMEM;
     mem->logical = memory;
