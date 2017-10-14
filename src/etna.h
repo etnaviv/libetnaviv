@@ -29,8 +29,6 @@
 
 #include "etnaviv_drmif.h"
 
-#include <common.xml.h>
-#include <cmdstream.xml.h>
 #include <etna_util.h>
 #include <viv.h>
 
@@ -81,186 +79,17 @@ struct etna_queue;
 struct etna_cmd_stream;
 struct etna_bo;
 
-
-/** Convenience macros for command buffer building, remember to reserve enough space before using them */
-/* Queue load state command header (queues one word) */
-#define ETNA_EMIT_LOAD_STATE(ctx, ofs, count, fixp) \
-    (ctx)->buf[(ctx)->offset++] = \
-    (VIV_FE_LOAD_STATE_HEADER_OP_LOAD_STATE | ((fixp)?VIV_FE_LOAD_STATE_HEADER_FIXP:0) | \
-     VIV_FE_LOAD_STATE_HEADER_OFFSET(ofs) | \
-     (VIV_FE_LOAD_STATE_HEADER_COUNT(count) & VIV_FE_LOAD_STATE_HEADER_COUNT__MASK))
-
-/* Queues one value (1 word) */
-#define ETNA_EMIT(ctx, value) \
-    (ctx)->buf[(ctx)->offset++] = (value)
-
-/* Draw array primitives (queues 4 words) */
-#define ETNA_EMIT_DRAW_PRIMITIVES(ctx, cmd, start, count) \
-    do { (ctx)->buf[(ctx)->offset++] = VIV_FE_DRAW_PRIMITIVES_HEADER_OP_DRAW_PRIMITIVES; \
-      (ctx)->buf[(ctx)->offset++] = cmd; \
-      (ctx)->buf[(ctx)->offset++] = start; \
-      (ctx)->buf[(ctx)->offset++] = count; } while(0)
-
-/* Draw indexed primitives (queues 6 words) */
-#define ETNA_EMIT_DRAW_INDEXED_PRIMITIVES(ctx, cmd, start, count, offset) \
-    do { (ctx)->buf[(ctx)->offset++] = VIV_FE_DRAW_INDEXED_PRIMITIVES_HEADER_OP_DRAW_INDEXED_PRIMITIVES; \
-      (ctx)->buf[(ctx)->offset++] = cmd; \
-      (ctx)->buf[(ctx)->offset++] = start; \
-      (ctx)->buf[(ctx)->offset++] = count; \
-      (ctx)->buf[(ctx)->offset++] = offset; \
-      (ctx)->offset++; } while(0)
-
-/* Queue a STALL command (queues 2 words) */
-#define ETNA_EMIT_STALL(ctx, from, to) \
-    do { (ctx)->buf[(ctx)->offset++] = VIV_FE_STALL_HEADER_OP_STALL; \
-      (ctx)->buf[(ctx)->offset++] = VIV_FE_STALL_TOKEN_FROM(from) | VIV_FE_STALL_TOKEN_TO(to); } while(0)
-
-/* Round current offset to 64-bit */
-#define ETNA_ALIGN(ctx) ctx->offset = (ctx->offset + 1)&(~1);
-
-/* macro for MASKED() (multiple can be &ed) */
-#define ETNA_MASKED(NAME, VALUE) (~(NAME ## _MASK | NAME ## __MASK) | ((VALUE)<<(NAME ## __SHIFT)))
-/* for boolean bits */
-#define ETNA_MASKED_BIT(NAME, VALUE) (~(NAME ## _MASK | NAME) | ((VALUE) ? NAME : 0))
-/* for inline enum bit fields
- */
-#define ETNA_MASKED_INL(NAME, VALUE) (~(NAME ## _MASK | NAME ## __MASK) | (NAME ## _ ## VALUE))
-
 /* Create new etna context.
  * Return error when creation fails.
  */
 int etna_create(struct etna_device *conn, struct etna_cmd_stream **ctx);
-
-/* Set GPU pipe (ETNA_PIPE_2D, ETNA_PIPE_3D).
- */
-int etna_set_pipe(struct etna_cmd_stream *ctx, enum etna_pipe_id pipe);
 
 /* Send currently queued commands to kernel.
  * @return OK on success, error code otherwise
  */
 int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out);
 
-/* Queue a semaphore (but don't stall).
- * from, to are values from SYNC_RECIPIENT_*.
- * @return OK on success, error code otherwise
- */
-int etna_semaphore(struct etna_cmd_stream *ctx, uint32_t from, uint32_t to);
-
-/* Queue a semaphore and stall.
- * from, to are values from SYNC_RECIPIENT_*.
- * @return OK on success, error code otherwise
- */
-int etna_stall(struct etna_cmd_stream *ctx, uint32_t from, uint32_t to);
-
 /* print command buffer for debugging */
 void etna_dump_cmd_buffer(struct etna_cmd_stream *ctx);
-
-/**
- * Direct state setting functions; these can be used for convenience. When absolute performance
- * is required while updating big blocks of state at once, it is recommended to use the
- * ETNA_EMIT_* macros and etna_cmd_stream_reserve directly.
- */
-static inline void etna_set_state(struct etna_cmd_stream *cmdbuf, uint32_t address, uint32_t value)
-{
-    etna_cmd_stream_reserve(cmdbuf, 2);
-    ETNA_EMIT_LOAD_STATE(cmdbuf, address >> 2, 1, 0);
-    ETNA_EMIT(cmdbuf, value);
-}
-
-static inline void etna_set_state_multi(struct etna_cmd_stream *cmdbuf, uint32_t base, uint32_t num, const uint32_t *values)
-{
-    if(num == 0) return;
-    etna_cmd_stream_reserve(cmdbuf, 1 + num + 1); /* 1 extra for potential alignment */
-    ETNA_EMIT_LOAD_STATE(cmdbuf, base >> 2, num, 0);
-    memcpy(&cmdbuf->buf[cmdbuf->offset], values, 4*num);
-    cmdbuf->offset += num;
-    ETNA_ALIGN(cmdbuf);
-}
-
-static inline void etna_set_state_f32(struct etna_cmd_stream *cmdbuf, uint32_t address, float value)
-{
-    etna_set_state(cmdbuf, address, etna_f32_to_u32(value));
-}
-static inline void etna_set_state_fixp(struct etna_cmd_stream *cmdbuf, uint32_t address, uint32_t value)
-{
-    etna_cmd_stream_reserve(cmdbuf, 2);
-    ETNA_EMIT_LOAD_STATE(cmdbuf, address >> 2, 1, 1);
-    ETNA_EMIT(cmdbuf, value);
-}
-static inline void etna_set_state_fixp_multi(struct etna_cmd_stream *cmdbuf, uint32_t address, uint32_t num, uint32_t *values)
-{
-    etna_cmd_stream_reserve(cmdbuf, 1 + num + 1); /* 1 extra for potential alignment */
-    ETNA_EMIT_LOAD_STATE(cmdbuf, address >> 2, num, 1);
-    memcpy(&cmdbuf->buf[cmdbuf->offset], values, 4*num);
-    cmdbuf->offset += num;
-    ETNA_ALIGN(cmdbuf);
-}
-static inline void etna_draw_primitives(struct etna_cmd_stream *cmdbuf, uint32_t primitive_type, uint32_t start, uint32_t count)
-{
-#ifdef CMD_DEBUG
-    printf("draw_primitives %08x %08x %08x %08x\n",
-            VIV_FE_DRAW_PRIMITIVES_HEADER_OP_DRAW_PRIMITIVES,
-            primitive_type, start, count);
-#endif
-    etna_cmd_stream_reserve(cmdbuf, 4);
-    ETNA_EMIT_DRAW_PRIMITIVES(cmdbuf, primitive_type, start, count);
-}
-static inline void etna_draw_indexed_primitives(struct etna_cmd_stream *cmdbuf, uint32_t primitive_type, uint32_t start, uint32_t count, uint32_t offset)
-{
-#ifdef CMD_DEBUG
-    printf("draw_primitives_indexed %08x %08x %08x %08x\n",
-            VIV_FE_DRAW_PRIMITIVES_HEADER_OP_DRAW_INDEXED_PRIMITIVES,
-            primitive_type, start, count);
-#endif
-    etna_cmd_stream_reserve(cmdbuf, 5+1);
-    ETNA_EMIT_DRAW_INDEXED_PRIMITIVES(cmdbuf, primitive_type, start, count, offset);
-}
-
-/* ETNA_COALESCE
- *
- * Mechanism to emit state changes and join consecutive
- * state updates into single SET_STATE commands when possible.
- *
- * Usage:
- * - Set state words with ETNA_COALESCE_STATE_UPDATE.
- *
- * - Before starting the state update, reserve space using EMIT_STATE_OPEN(max_updates),
- *   where max_updates is the maximum number of possible updates that will be emitted between
- *   this ETNA_COALESCE_STATE_OPEN .. ETNA_COALESCE_STATE_CLOSE pair.
- *
- * - When done with updating, call ETNA_COALESCE_STATE_CLOSE.
- *
- * In the scope where these macros are used, define the variables
- *     uint32_t last_reg,  -> last register to write to
- *       last_fixp,   -> fixp conversion flag for last written register
- *       span_start   -> start of span in command buffer
- * for state tracking.
- *
- * It works by keeping track of the last register that was written to plus one,
- * thus the next register that will be written. If the register number to be written
- * matches this next register, add it to the current span. If not, close the span
- * and open a new one.
- */
-#define ETNA_COALESCE_STATE_OPEN(max_updates) \
-    etna_cmd_stream_reserve(ctx, (max_updates) * 2); \
-    span_start = ctx->offset; \
-    last_reg = last_fixp = 0;
-
-#define ETNA_COALESCE_STATE_CLOSE() \
-    uint32_t span_size = ctx->offset - span_start; \
-    if(span_size) { (ctx)->buf[span_start - 1] |= VIV_FE_LOAD_STATE_HEADER_COUNT(span_size); } \
-    ETNA_ALIGN(ctx);
-
-#define ETNA_COALESCE_STATE_UPDATE(state_name, src_value, fixp) \
-    { \
-        if(last_reg != (VIVS_##state_name) || (fixp) != last_fixp) \
-        { \
-            ETNA_COALESCE_STATE_CLOSE() \
-            ETNA_EMIT_LOAD_STATE(ctx, (VIVS_##state_name) >> 2, 0, (fixp));  \
-            span_start = ctx->offset; \
-        } \
-        ETNA_EMIT(ctx, src_value); \
-        last_reg = VIVS_##state_name + 4; last_fixp = (fixp); \
-    }
 
 #endif

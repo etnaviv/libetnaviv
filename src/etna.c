@@ -24,7 +24,6 @@
 #include <etna_bo.h>
 #include <viv.h>
 #include <etna_queue.h>
-#include <state.xml.h>
 
 #include <stdlib.h>
 #include <stdbool.h>
@@ -402,59 +401,6 @@ void etna_cmd_stream_finish(struct etna_cmd_stream *ctx)
         abort();
     }
 }
-
-int etna_set_pipe(struct etna_cmd_stream *ctx, enum etna_pipe_id pipe)
-{
-    if(ctx == NULL)
-        return ETNA_INVALID_ADDR;
-
-    etna_cmd_stream_reserve(ctx, 2);
-    ETNA_EMIT_LOAD_STATE(ctx, VIVS_GL_FLUSH_CACHE>>2, 1, 0);
-    switch(pipe)
-    {
-    case ETNA_PIPE_2D: ETNA_EMIT(ctx, VIVS_GL_FLUSH_CACHE_PE2D); break;
-    case ETNA_PIPE_3D: ETNA_EMIT(ctx, VIVS_GL_FLUSH_CACHE_DEPTH | VIVS_GL_FLUSH_CACHE_COLOR); break;
-    default: return ETNA_INVALID_VALUE;
-    }
-
-    etna_stall(ctx, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_PE);
-
-    etna_cmd_stream_reserve(ctx, 2);
-    ETNA_EMIT_LOAD_STATE(ctx, VIVS_GL_PIPE_SELECT>>2, 1, 0);
-    ETNA_EMIT(ctx, pipe);
-
-    return ETNA_OK;
-}
-
-int etna_semaphore(struct etna_cmd_stream *ctx, uint32_t from, uint32_t to)
-{
-    if(ctx == NULL)
-        return ETNA_INVALID_ADDR;
-    etna_cmd_stream_reserve(ctx, 2);
-    ETNA_EMIT_LOAD_STATE(ctx, VIVS_GL_SEMAPHORE_TOKEN>>2, 1, 0);
-    ETNA_EMIT(ctx, VIVS_GL_SEMAPHORE_TOKEN_FROM(from) | VIVS_GL_SEMAPHORE_TOKEN_TO(to));
-    return ETNA_OK;
-}
-
-int etna_stall(struct etna_cmd_stream *ctx, uint32_t from, uint32_t to)
-{
-    if(ctx == NULL)
-        return ETNA_INVALID_ADDR;
-    etna_cmd_stream_reserve(ctx, 4);
-    ETNA_EMIT_LOAD_STATE(ctx, VIVS_GL_SEMAPHORE_TOKEN>>2, 1, 0);
-    ETNA_EMIT(ctx, VIVS_GL_SEMAPHORE_TOKEN_FROM(from) | VIVS_GL_SEMAPHORE_TOKEN_TO(to));
-    if(from == SYNC_RECIPIENT_FE)
-    {
-        /* if the frontend is to be stalled, queue a STALL frontend command */
-        ETNA_EMIT_STALL(ctx, from, to);
-    } else {
-        /* otherwise, load the STALL token state */
-        ETNA_EMIT_LOAD_STATE(ctx, VIVS_GL_STALL_TOKEN>>2, 1, 0);
-        ETNA_EMIT(ctx, VIVS_GL_STALL_TOKEN_FROM(from) | VIVS_GL_STALL_TOKEN_TO(to));
-    }
-    return ETNA_OK;
-}
-
 
 void etna_dump_cmd_buffer(struct etna_cmd_stream *ctx)
 {

@@ -29,31 +29,16 @@ libfakedrm_etnaviv_la_SOURCES = \
 			viv_profile.c \
 			etna_bo.c \
 			etna_queue.c \
-			etna_tex.c \
-			etna_fb.c \
-			etna_rs.c \
 			etna_pipe.c \
 			etna_gpu.c \
 			etna_drm_emu.c
 
 libfakedrm_etnaviv_la_includedir = $(includedir)/etnaviv
 noinst_HEADERS = \
-			cmdstream.xml.h \
-			common.xml.h \
 			etna_bo.h \
-			etna_fb.h \
 			etna.h \
 			etna_queue.h \
-			etna_rs.h \
-			etna_tex.h \
 			etna_util.h \
-			interval.h \
-			isa.xml.h \
-			state_2d.xml.h \
-			state_3d.xml.h \
-			state_hi.xml.h \
-			state_vg.xml.h \
-			state.xml.h \
 			viv.h \
 			viv_internal.h \
 			viv_profile.h
