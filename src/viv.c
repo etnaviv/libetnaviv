@@ -240,6 +240,30 @@ static void convert_chip_specs(struct viv_specs *out, const struct _gcsHAL_QUERY
 #else
     out->varyings_count = 8;
 #endif
+#else
+    if (in->chipModel == 0x7000) {
+        /* HACK gc7000L_DEC400 */
+        out->chip_features[0] = 0xffffffff;
+        out->chip_features[1] = 0xffffffff;
+        out->chip_features[2] = 0xffffffff;
+        out->chip_features[3] = 0xffffffff;
+        out->chip_features[4] = 0xffffffff;
+        out->chip_features[5] = 0xffffffff;
+        out->chip_features[6] = 0xffffffff;
+        out->stream_count = 0x10;
+        out->register_max = 0x40;
+        out->thread_count = 0x400;
+        out->shader_core_count = 0x4;
+        out->vertex_cache_size = 0x10;
+        out->vertex_output_buffer_size = 0x400;
+        out->pixel_pipes = 2;
+        out->instruction_count = 0x200;
+        out->num_constants = 0x140;
+        out->buffer_size = 0;
+    } else {
+        printf("libetnaviv: Unknown model %08x with unknown features, aborting\n", in->chipModel);
+        abort();
+    }
 #endif
 }
 
@@ -879,7 +903,8 @@ unlock_and_ok: /* unlock mutex and return OK */
 
 struct etna_device *etna_device_new_dup(int fd)
 {
-    return NULL; /* TODO */
+    /* TODO: does this need special handling? */
+    return etna_device_new(fd);
 }
 
 struct etna_device *etna_device_ref(struct etna_device *dev)

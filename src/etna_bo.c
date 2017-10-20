@@ -463,6 +463,11 @@ uint32_t etna_bo_gpu_address(struct etna_bo *bo)
     return bo->address;
 }
 
+int etna_bo_dmabuf(struct etna_bo *bo)
+{
+    return -1;
+}
+
 /* Missing:
 
 struct etna_bo *etna_bo_from_handle(struct etna_device *dev,
