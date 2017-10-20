@@ -24,6 +24,7 @@
 #include <etna_bo.h>
 #include <viv.h>
 #include <etna_queue.h>
+#include <etnaviv_drmif.h>
 
 #include <stdlib.h>
 #include <stdbool.h>

@@ -14,8 +14,8 @@
 # which can conflict - index, range, etc.
 AM_CFLAGS = $(filter-out -Wnested-externs -Wcast-qual -Wredundant-decls \
         -Werror=write-strings -Wshadow,$(CWARNFLAGS)) \
-        -std=gnu99 -Wall $(GALCORE_CFLAGS) $(VIVHOOK_CFLAGS) \
-	-I$(top_srcdir)/src -I$(top_srcdir)/include
+	-I$(top_srcdir)/src -I$(top_srcdir)/include \
+        -std=gnu99 -Wall $(GALCORE_CFLAGS) $(VIVHOOK_CFLAGS)
 
 libfakedrm_etnaviv_la_LTLIBRARIES = libfakedrm_etnaviv.la
 libfakedrm_etnaviv_ladir = $(libdir)

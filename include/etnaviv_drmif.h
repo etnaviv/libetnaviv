@@ -152,6 +152,9 @@ struct etna_bo *etna_bo_from_usermem_prot(struct etna_device *conn, void *memory
 /* Buffer object from framebuffer range */
 struct etna_bo *etna_bo_from_fbdev(struct etna_device *conn, int fd, size_t offset, size_t size);
 
+/* Temporary: get GPU address of buffer */
+uint32_t etna_bo_gpu_address(struct etna_bo *bo);
+
 /* cmd stream functions:
  */
 

@@ -37,8 +37,5 @@ struct etna_bo;
 
 int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue);
 
-/* Temporary: get GPU address of buffer */
-uint32_t etna_bo_gpu_address(struct etna_bo *bo);
-
 #endif
 
