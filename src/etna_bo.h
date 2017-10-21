@@ -37,5 +37,7 @@ struct etna_bo;
 
 int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue);
 
+extern bool fake_dmabuf_mode;
+
 #endif
 

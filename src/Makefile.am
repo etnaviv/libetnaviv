@@ -48,4 +48,5 @@ libfakedrm_etnaviv_la_include_HEADERS = \
 			../include/drm_mode.h \
 			../include/etnaviv_drmif.h \
 			../include/xf86drm.h \
-			../include/libsync.h
+			../include/libsync.h \
+			../include/xf86drmMode.h

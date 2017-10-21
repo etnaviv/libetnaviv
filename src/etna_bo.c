@@ -41,6 +41,8 @@
  */
 #define ETNA_VIDMEM_ALIGNMENT (0x100)
 
+bool fake_dmabuf_mode = false;
+
 enum etna_bo_type {
     ETNA_BO_TYPE_VIDMEM,    /* Main vidmem */
     ETNA_BO_TYPE_VIDMEM_EXTERNAL, /* Main vidmem, external handle */
@@ -325,19 +327,27 @@ struct etna_bo *etna_bo_from_name(struct etna_device *conn, uint32_t name)
 
 struct etna_bo *etna_bo_from_dmabuf_prot(struct etna_device *conn, int fd, int prot)
 {
-    struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
-    if(mem == NULL) return NULL;
+    if (fake_dmabuf_mode) {
+        printf("Fake etna_bo_from_dmabuf fbdev fd %d\n", fd);
+        struct fb_fix_screeninfo finfo;
+        if(ioctl(fd, FBIOGET_FSCREENINFO, &finfo))
+            return NULL;
+        return etna_bo_from_fbdev(conn, fd, 0, finfo.smem_len);
+    } else {
+        struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
+        if(mem == NULL) return NULL;
 
-    mem->conn = conn;
-    mem->bo_type = ETNA_BO_TYPE_DMABUF;
+        mem->conn = conn;
+        mem->bo_type = ETNA_BO_TYPE_DMABUF;
 
-    if(viv_map_dmabuf(conn, fd, &mem->usermem_info, &mem->address, prot)!=0)
-    {
-        ETNA_FREE(mem);
-        return NULL;
+        if(viv_map_dmabuf(conn, fd, &mem->usermem_info, &mem->address, prot)!=0)
+        {
+            ETNA_FREE(mem);
+            return NULL;
+        }
+
+        return mem;
     }
-
-    return mem;
 }
 
 struct etna_bo *etna_bo_from_dmabuf(struct etna_device *conn, int fd)

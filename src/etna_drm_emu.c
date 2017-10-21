@@ -1,9 +1,16 @@
 #include "xf86drm.h"
 #include "etna_util.h"
+#include "etna_bo.h"
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/fb.h>
 
 /* Just enough to make Mesa work */
 
@@ -26,7 +33,31 @@ void drmFreeVersion(drmVersionPtr version)
 
 int drmIoctl(int fd, unsigned long request, void *arg)
 {
-    printf("drmIoctl %d %08x %p\n", fd, (unsigned)request, arg);
+    switch(request) {
+    case DRM_IOCTL_MODE_CREATE_DUMB: {
+            struct drm_mode_create_dumb *create_dumb = (struct drm_mode_create_dumb*)arg;
+            struct fb_fix_screeninfo fb_fix;
+            printf("DRM_IOCTL_MODE_CREATE_DUMB %dx%dx%d\n", create_dumb->width, create_dumb->height, create_dumb->bpp);
+            int fd = open("/dev/fb0", O_RDWR | O_CLOEXEC);
+            if (ioctl(fd, FBIOGET_FSCREENINFO, &fb_fix)) {
+                    printf("Error: failed to run FBIOGET_FSCREENINFO ioctl\n");
+                close(fd);
+                return -1;
+            }
+            create_dumb->pitch = fb_fix.line_length;
+            /* Fake "dmabuf" spanning the console */
+            create_dumb->handle = fd;
+            return 0;
+        } break;
+    case DRM_IOCTL_MODE_DESTROY_DUMB: {
+            struct drm_mode_destroy_dumb *destroy_dumb = (struct drm_mode_destroy_dumb*)arg;
+            printf("DRM_IOCTL_MODE_DESTROY_DUMB %d\n", destroy_dumb->handle);
+            close(destroy_dumb->handle);
+            return 0;
+        } break;
+    default:
+        printf("unhandled drmIoctl %d %08x %p\n", fd, (unsigned)request, arg);
+    }
     return -1;
 }
 
@@ -71,7 +102,9 @@ int drmAuthMagic(int fd, drm_magic_t magic)
 int drmPrimeHandleToFD(int fd, uint32_t handle, uint32_t flags, int *prime_fd)
 {
     printf("drmPrimeHandleToFD %d %d %08x\n", fd, handle, flags);
-    return -1;
+    fake_dmabuf_mode = true;
+    *prime_fd = handle;
+    return 0;
 }
 
 int drmPrimeFDToHandle(int fd, int prime_fd, uint32_t *handle)
