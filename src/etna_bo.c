@@ -34,13 +34,7 @@
 
 #include "gc_abi.h"
 
-//#define DEBUG
-/* TODO:
- *   0x100 for RT, ZS, CODE
- *   0x8 for VERTEX
- *   0x40 for TXD, TS
- */
-#define ETNA_VIDMEM_ALIGNMENT (0x100)
+#define ETNA_VIDMEM_ALIGNMENT (0x40)
 
 bool fake_dmabuf_mode = false;
 static uint64_t total_allocated = 0;
