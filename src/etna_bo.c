@@ -24,6 +24,8 @@
 #include <etna.h>
 #include <etna_queue.h>
 
+#include "xf86atomic.h"
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -62,6 +64,7 @@ struct etna_bo {
     viv_addr_t address;
     void *logical;
     viv_usermem_t usermem_info;
+    atomic_t        refcnt;
 };
 
 #ifdef DEBUG
@@ -186,6 +189,7 @@ struct etna_bo* etna_bo_new(struct etna_device *conn, uint32_t bytes, uint32_t f
     struct etna_bo *mem = ETNA_CALLOC_STRUCT(etna_bo);
     if(mem == NULL) return NULL;
     mem->conn = conn;
+    atomic_set(&mem->refcnt, 1);
 
     if((flags & DRM_ETNA_GEM_TYPE_MASK) == DRM_ETNA_GEM_TYPE_CMD)
     {
@@ -253,6 +257,7 @@ struct etna_bo *etna_bo_from_usermem_prot(struct etna_device *conn, void *memory
     mem->bo_type = ETNA_BO_TYPE_USERMEM;
     mem->logical = memory;
     mem->size = size;
+    atomic_set(&mem->refcnt, 1);
 
     if(viv_map_user_memory_prot(conn, memory, size, prot, &mem->usermem_info, &mem->address)!=0)
     {
@@ -274,6 +279,7 @@ struct etna_bo *etna_bo_from_usermem(struct etna_device *conn, void *memory, siz
     mem->bo_type = ETNA_BO_TYPE_USERMEM;
     mem->logical = memory;
     mem->size = size;
+    atomic_set(&mem->refcnt, 1);
 
     if(viv_map_user_memory(conn, memory, size, &mem->usermem_info, &mem->address)!=0)
     {
@@ -291,6 +297,7 @@ struct etna_bo *etna_bo_from_fbdev(struct etna_device *conn, int fd, size_t offs
     if(mem == NULL) return NULL;
 
     mem->conn = conn;
+    atomic_set(&mem->refcnt, 1);
 
     if(ioctl(fd, FBIOGET_FSCREENINFO, &finfo))
         goto error;
@@ -314,6 +321,7 @@ struct etna_bo *etna_bo_from_name(struct etna_device *conn, uint32_t name)
     mem->conn = conn;
     mem->bo_type = ETNA_BO_TYPE_VIDMEM_EXTERNAL;
     mem->node = (viv_node_t)name;
+    atomic_set(&mem->refcnt, 1);
 
     /* Lock to this address space */
     int status = etna_bo_lock(conn, mem);
@@ -339,6 +347,7 @@ struct etna_bo *etna_bo_from_dmabuf_prot(struct etna_device *conn, int fd, int p
 
         mem->conn = conn;
         mem->bo_type = ETNA_BO_TYPE_DMABUF;
+        atomic_set(&mem->refcnt, 1);
 
         if(viv_map_dmabuf(conn, fd, &mem->usermem_info, &mem->address, prot)!=0)
         {
@@ -357,7 +366,8 @@ struct etna_bo *etna_bo_from_dmabuf(struct etna_device *conn, int fd)
 
 struct etna_bo *etna_bo_ref(struct etna_bo *bo)
 {
-    /* TODO */
+    atomic_inc(&bo->refcnt);
+
     return bo;
 }
 
@@ -371,6 +381,8 @@ int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue)
     int rv = ETNA_OK;
     if(mem == NULL) return ETNA_OK;
     struct etna_device *conn = mem->conn;
+    if (!atomic_dec_and_test(&mem->refcnt))
+        return ETNA_OK;
     switch(mem->bo_type)
     {
     case ETNA_BO_TYPE_VIDMEM:
