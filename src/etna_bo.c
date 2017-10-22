@@ -20,11 +20,10 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#include <etna_bo.h>
-#include <etna.h>
-#include <etna_queue.h>
-
-#include "xf86atomic.h"
+#include "etna_internal.h"
+#include "etna_bo.h"
+#include "etna.h"
+#include "etna_queue.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -44,28 +43,6 @@
 #define ETNA_VIDMEM_ALIGNMENT (0x100)
 
 bool fake_dmabuf_mode = false;
-
-enum etna_bo_type {
-    ETNA_BO_TYPE_VIDMEM,    /* Main vidmem */
-    ETNA_BO_TYPE_VIDMEM_EXTERNAL, /* Main vidmem, external handle */
-    ETNA_BO_TYPE_USERMEM,   /* Mapped user memory */
-    ETNA_BO_TYPE_CONTIGUOUS,/* Contiguous memory */
-    ETNA_BO_TYPE_PHYSICAL,  /* Mmap-ed physical memory */
-    ETNA_BO_TYPE_DMABUF     /* dmabuf memory */
-};
-
-/* Structure describing a block of video or user memory */
-struct etna_bo {
-    struct etna_device *conn;
-    enum etna_bo_type bo_type;
-    size_t size;
-    enum viv_surf_type type;
-    viv_node_t node;
-    viv_addr_t address;
-    void *logical;
-    viv_usermem_t usermem_info;
-    atomic_t        refcnt;
-};
 
 #ifdef DEBUG
 static const char *etna_bo_surf_type(struct etna_bo *mem)
@@ -367,6 +344,9 @@ struct etna_bo *etna_bo_from_dmabuf(struct etna_device *conn, int fd)
 struct etna_bo *etna_bo_ref(struct etna_bo *bo)
 {
     atomic_inc(&bo->refcnt);
+#ifdef DEBUG_BO
+    printf("%s: refcount for %p increased to %d\n", __func__, bo, atomic_read(&bo->refcnt));
+#endif
 
     return bo;
 }
@@ -381,8 +361,15 @@ int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue)
     int rv = ETNA_OK;
     if(mem == NULL) return ETNA_OK;
     struct etna_device *conn = mem->conn;
-    if (!atomic_dec_and_test(&mem->refcnt))
+    if (!atomic_dec_and_test(&mem->refcnt)) {
+#ifdef DEBUG_BO
+        printf("%s: refcount for %p decreased to %d\n", __func__, mem, atomic_read(&mem->refcnt));
+#endif
         return ETNA_OK;
+    }
+#ifdef DEBUG_BO
+    printf("%s: refcount for %p dropped to zero\n", __func__, mem);
+#endif
     switch(mem->bo_type)
     {
     case ETNA_BO_TYPE_VIDMEM:

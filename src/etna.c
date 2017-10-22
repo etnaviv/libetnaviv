@@ -20,21 +20,23 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#include <etna.h>
-#include <etna_bo.h>
-#include <viv.h>
-#include <etna_queue.h>
-#include <etnaviv_drmif.h>
+#include "etna.h"
+#include "etna_bo.h"
+#include "viv.h"
+#include "etna_queue.h"
 
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include "gc_abi.h"
 
 #include "viv_internal.h"
 #include "etna_internal.h"
+
+static pthread_mutex_t idx_lock = PTHREAD_MUTEX_INITIALIZER;
 
 //#define DEBUG
 //#define DEBUG_CMDBUF
@@ -48,13 +50,13 @@
 */
 #define ETNA_MAX_UNSIGNALED_FLUSHES (40)
 
-static int gpu_context_initialize(struct etna_cmd_stream *ctx)
+static int gpu_context_initialize(struct etna_cmd_stream_priv *ctx)
 {
     /* attach to GPU */
     int err;
     gcsHAL_INTERFACE id = {};
     id.command = gcvHAL_ATTACH;
-    if((err=viv_invoke(ctx->conn, &id)) != gcvSTATUS_OK)
+    if((err=viv_invoke(ctx->base.conn, &id)) != gcvSTATUS_OK)
     {
 #ifdef DEBUG
         fprintf(stderr, "Error attaching to GPU\n");
@@ -70,7 +72,7 @@ static int gpu_context_initialize(struct etna_cmd_stream *ctx)
     return ETNA_OK;
 }
 
-static int gpu_context_free(struct etna_cmd_stream *ctx)
+static int gpu_context_free(struct etna_cmd_stream_priv *ctx)
 {
     /* attach to GPU */
     int err;
@@ -78,7 +80,7 @@ static int gpu_context_free(struct etna_cmd_stream *ctx)
     id.command = gcvHAL_DETACH;
     id.u.Detach.context = HANDLE_TO_VIV(ctx->ctx);
 
-    if((err=viv_invoke(ctx->conn, &id)) != gcvSTATUS_OK)
+    if((err=viv_invoke(ctx->base.conn, &id)) != gcvSTATUS_OK)
     {
 #ifdef DEBUG
         fprintf(stderr, "Error detaching from the GPU\n");
@@ -95,8 +97,8 @@ struct etna_cmd_stream *etna_cmd_stream_new(struct etna_pipe *pipe, uint32_t siz
 {
     int rv;
     struct etna_device *conn = pipe->gpu->dev;
-    struct etna_cmd_stream *ctx = ETNA_CALLOC_STRUCT(etna_cmd_stream);
-    ctx->conn = conn;
+    struct etna_cmd_stream_priv *ctx = ETNA_CALLOC_STRUCT(etna_cmd_stream_priv);
+    ctx->base.conn = conn;
     ctx->reset_notify = reset_notify;
     ctx->reset_notify_priv = priv;
 
@@ -156,7 +158,7 @@ struct etna_cmd_stream *etna_cmd_stream_new(struct etna_pipe *pipe, uint32_t siz
     }
 
     /* Allocate command queue */
-    if((rv = etna_queue_create(ctx, &ctx->queue)) != ETNA_OK)
+    if((rv = etna_queue_create(&ctx->base, &ctx->queue)) != ETNA_OK)
     {
 #ifdef DEBUG
         fprintf(stderr, "Error allocating kernel command queue: %d\n", rv);
@@ -167,10 +169,10 @@ struct etna_cmd_stream *etna_cmd_stream_new(struct etna_pipe *pipe, uint32_t siz
     /* Set current buffer to ETNA_NO_BUFFER, to signify that we need to switch to buffer 0 before
      * queueing of commands can be started.
      */
-    ctx->cur_buf = ETNA_NO_BUFFER;
-    ctx->end = (COMMAND_BUFFER_SIZE - END_COMMIT_CLEARANCE)/4;
+    ctx->base.cur_buf = ETNA_NO_BUFFER;
+    ctx->base.end = (COMMAND_BUFFER_SIZE - END_COMMIT_CLEARANCE)/4;
 
-    return ctx;
+    return &ctx->base;
 }
 
 /* Clear a command buffer */
@@ -182,13 +184,13 @@ static void clear_buffer(gcoCMDBUF cmdbuf)
 }
 
 /* Switch to next buffer, optionally wait for it to be available */
-static int switch_next_buffer(struct etna_cmd_stream *ctx)
+static int switch_next_buffer(struct etna_cmd_stream_priv *ctx)
 {
-    int next_buf_id = (ctx->cur_buf + 1) % NUM_COMMAND_BUFFERS;
+    int next_buf_id = (ctx->base.cur_buf + 1) % NUM_COMMAND_BUFFERS;
 #if 0
     fprintf(stderr, "Switching to new buffer %i\n", next_buf_id);
 #endif
-    if(viv_user_signal_wait(ctx->conn, ctx->cmdbufi[next_buf_id].sig_id, VIV_WAIT_INDEFINITE) != 0)
+    if(viv_user_signal_wait(ctx->base.conn, ctx->cmdbufi[next_buf_id].sig_id, VIV_WAIT_INDEFINITE) != 0)
     {
 #ifdef DEBUG
         fprintf(stderr, "Error waiting for command buffer sync signal\n");
@@ -196,27 +198,28 @@ static int switch_next_buffer(struct etna_cmd_stream *ctx)
         return ETNA_INTERNAL_ERROR;
     }
     clear_buffer(ctx->cmdbuf[next_buf_id]);
-    ctx->cur_buf = next_buf_id;
-    ctx->buf = VIV_TO_PTR(ctx->cmdbuf[next_buf_id]->logical);
-    ctx->offset = ctx->cmdbuf[next_buf_id]->offset / 4;
+    ctx->base.cur_buf = next_buf_id;
+    ctx->base.buf = VIV_TO_PTR(ctx->cmdbuf[next_buf_id]->logical);
+    ctx->base.offset = ctx->cmdbuf[next_buf_id]->offset / 4;
 #ifdef DEBUG
     fprintf(stderr, "Switched to command buffer %i\n", ctx->cur_buf);
 #endif
     return ETNA_OK;
 }
 
-void etna_cmd_stream_del(struct etna_cmd_stream *ctx)
+void etna_cmd_stream_del(struct etna_cmd_stream *ctx_)
 {
+    struct etna_cmd_stream_priv *ctx = etna_cmd_stream_priv(ctx_);
     /* Free kernel command queue */
     etna_queue_free(ctx->queue);
     /* Free command buffers */
     for(int x=0; x<NUM_COMMAND_BUFFERS; ++x)
     {
-        viv_user_signal_destroy(ctx->conn, ctx->cmdbufi[x].sig_id);
+        viv_user_signal_destroy(ctx->base.conn, ctx->cmdbufi[x].sig_id);
         etna_bo_del_ext(ctx->cmdbufi[x].bo, NULL);
         ETNA_FREE(ctx->cmdbuf[x]);
     }
-    viv_user_signal_destroy(ctx->conn, ctx->sig_id);
+    viv_user_signal_destroy(ctx->base.conn, ctx->sig_id);
     gpu_context_free(ctx);
 
     ETNA_FREE(ctx);
@@ -227,30 +230,31 @@ void etna_cmd_stream_del(struct etna_cmd_stream *ctx)
  * - signify when current command buffer becomes available using a signal
  * - switch to next command buffer
  */
-void _etna_cmd_stream_reserve_internal(struct etna_cmd_stream *ctx, size_t n)
+void _etna_cmd_stream_reserve_internal(struct etna_cmd_stream *ctx_, size_t n)
 {
     int status;
+    struct etna_cmd_stream_priv *ctx = etna_cmd_stream_priv(ctx_);
 #ifdef DEBUG
     fprintf(stderr, "Buffer full\n");
 #endif
-    if((ctx->offset*4 + END_COMMIT_CLEARANCE) > COMMAND_BUFFER_SIZE)
+    if((ctx->base.offset*4 + END_COMMIT_CLEARANCE) > COMMAND_BUFFER_SIZE)
     {
         fprintf(stderr, "%s: Command buffer overflow! This is likely a programming error in the GPU driver.\n", __func__);
         abort();
     }
-    if(ctx->cur_buf != ETNA_NO_BUFFER)
+    if(ctx->base.cur_buf != ETNA_NO_BUFFER)
     {
 #if 0
         fprintf(stderr, "Submitting old buffer %i\n", ctx->cur_buf);
 #endif
         /* Queue signal to signify when buffer is available again */
-        if((status = etna_queue_signal(ctx->queue, ctx->cmdbufi[ctx->cur_buf].sig_id, VIV_WHERE_COMMAND)) != ETNA_OK)
+        if((status = etna_queue_signal(ctx->queue, ctx->cmdbufi[ctx->base.cur_buf].sig_id, VIV_WHERE_COMMAND)) != ETNA_OK)
         {
             fprintf(stderr, "%s: queue signal for old buffer failed: %i\n", __func__, status);
             abort(); /* buffer is in invalid state XXX need some kind of recovery */
         }
         /* Otherwise, if there is something to be committed left in the current command buffer, commit it */
-        if((status = etna_flush(ctx, NULL)) != ETNA_OK)
+        if((status = etna_flush(ctx_, NULL)) != ETNA_OK)
         {
             fprintf(stderr, "%s: reserve failed: %i\n", __func__, status);
             abort(); /* buffer is in invalid state XXX need some kind of recovery */
@@ -266,12 +270,29 @@ void _etna_cmd_stream_reserve_internal(struct etna_cmd_stream *ctx, size_t n)
     }
 }
 
-int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out)
+/** Unreference bos, make sure async cleanup is done
+ * after the submit only.
+ */
+static void unref_bos(struct etna_cmd_stream_priv *priv)
 {
+    uint32_t i;
+    assert(priv->queue);
+    for (i=0; i<priv->nr_bos; ++i) {
+#ifdef DEBUG_BO
+        printf("%s: releasing bo %p at index %d\n", __func__, priv->bos[i], i);
+#endif
+        etna_bo_del_ext(priv->bos[i], priv->queue);
+    }
+    priv->nr_bos = 0;
+}
+
+int etna_flush(struct etna_cmd_stream *ctx_, uint32_t *fence_out)
+{
+    struct etna_cmd_stream_priv *ctx = etna_cmd_stream_priv(ctx_);
     int status = ETNA_OK;
     if(ctx == NULL)
         return ETNA_INVALID_ADDR;
-    if(ctx->cur_buf == ETNA_CTX_BUFFER)
+    if(ctx->base.cur_buf == ETNA_CTX_BUFFER)
         /* Can never flush while building context buffer */
         return ETNA_INTERNAL_ERROR;
 
@@ -282,10 +303,10 @@ int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out)
         /* Need to lock the fence mutex to make sure submits are ordered by
          * fence number.
          */
-        pthread_mutex_lock(&ctx->conn->fence_mutex);
+        pthread_mutex_lock(&ctx->base.conn->fence_mutex);
         do {
             /*   Get next fence ID */
-            if((status = _viv_fence_new(ctx->conn, &fence, &signal)) != VIV_STATUS_OK)
+            if((status = _viv_fence_new(ctx->base.conn, &fence, &signal)) != VIV_STATUS_OK)
             {
                 fprintf(stderr, "%s: could not request fence\n", __func__);
                 goto unlock_and_return_status;
@@ -304,17 +325,20 @@ int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out)
         *fence_out = fence;
     }
     /***** Start fence mutex locked */
+    /* Unreference bos */
+    unref_bos(ctx);
+
     /* Make sure to unlock the mutex before returning */
     struct _gcsQUEUE *queue_first = _etna_queue_first(ctx->queue);
-    gcoCMDBUF cur_buf = (ctx->cur_buf != ETNA_NO_BUFFER) ? ctx->cmdbuf[ctx->cur_buf] : NULL;
+    gcoCMDBUF cur_buf = (ctx->base.cur_buf != ETNA_NO_BUFFER) ? ctx->cmdbuf[ctx->base.cur_buf] : NULL;
 
-    if(cur_buf == NULL || (ctx->offset*4 <= (cur_buf->startOffset + BEGIN_COMMIT_CLEARANCE)))
+    if(cur_buf == NULL || (ctx->base.offset*4 <= (cur_buf->startOffset + BEGIN_COMMIT_CLEARANCE)))
     {
         /* Nothing in command buffer; but if we end up here there may be kernel commands to submit. Do this seperately. */
         if(queue_first != NULL)
         {
             ctx->flushes = 0;
-            if((status = viv_event_commit(ctx->conn, queue_first)) != 0)
+            if((status = viv_event_commit(ctx->base.conn, queue_first)) != 0)
             {
 #ifdef DEBUG
                 fprintf(stderr, "Error committing kernel commands\n");
@@ -322,12 +346,12 @@ int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out)
                 goto unlock_and_return_status;
             }
             if(fence_out) /* mark fence as submitted to kernel */
-                _viv_fence_mark_pending(ctx->conn, *fence_out);
+                _viv_fence_mark_pending(ctx->base.conn, *fence_out);
         }
         goto unlock_and_return_status;
     }
 
-    cur_buf->offset = ctx->offset*4; /* Copy over current end offset into CMDBUF, for kernel */
+    cur_buf->offset = ctx->base.offset*4; /* Copy over current end offset into CMDBUF, for kernel */
 #ifdef DEBUG
     fprintf(stderr, "Committing command buffer %i startOffset=%x offset=%x\n", ctx->cur_buf,
             cur_buf->startOffset, ctx->offset*4);
@@ -339,7 +363,7 @@ int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out)
         ctx->flushes += 1;
     else
         ctx->flushes = 0;
-    if((status = viv_commit(ctx->conn, cur_buf, ctx->ctx, queue_first)) != 0)
+    if((status = viv_commit(ctx->base.conn, cur_buf, ctx->ctx, queue_first)) != 0)
     {
 #ifdef DEBUG
         fprintf(stderr, "Error committing command buffer\n");
@@ -348,8 +372,8 @@ int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out)
     }
     if(fence_out)
     {
-        _viv_fence_mark_pending(ctx->conn, *fence_out);
-        pthread_mutex_unlock(&ctx->conn->fence_mutex);
+        _viv_fence_mark_pending(ctx->base.conn, *fence_out);
+        pthread_mutex_unlock(&ctx->base.conn->fence_mutex);
     }
     /***** End fence mutex locked */
     cur_buf->startOffset = cur_buf->offset + END_COMMIT_CLEARANCE;
@@ -366,7 +390,7 @@ int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out)
 
     /* Set writing offset for next etna_cmd_stream_reserve. For convenience this is
        stored as an index instead of a byte offset.  */
-    ctx->offset = cur_buf->offset / 4;
+    ctx->base.offset = cur_buf->offset / 4;
 #ifdef DEBUG
     fprintf(stderr, "  New start offset: %x New offset: %x\n", cur_buf->startOffset, cur_buf->offset);
 #endif
@@ -374,12 +398,13 @@ int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out)
 
 unlock_and_return_status: /* Unlock fence mutex (if necessary) and return status */
     if(fence_out)
-        pthread_mutex_unlock(&ctx->conn->fence_mutex);
+        pthread_mutex_unlock(&ctx->base.conn->fence_mutex);
     return status;
 }
 
-void etna_cmd_stream_finish(struct etna_cmd_stream *ctx)
+void etna_cmd_stream_finish(struct etna_cmd_stream *ctx_)
 {
+    struct etna_cmd_stream_priv *ctx = etna_cmd_stream_priv(ctx_);
     int status;
     /* Submit event queue with SIGNAL, fromWhere=gcvKERNEL_PIXEL (wait for pixel engine to finish) */
     if(etna_queue_signal(ctx->queue, ctx->sig_id, VIV_WHERE_PIXEL) != 0)
@@ -387,7 +412,7 @@ void etna_cmd_stream_finish(struct etna_cmd_stream *ctx)
         fprintf(stderr, "%s: Internal error while queing signal.\n", __func__);
         abort();
     }
-    if((status = etna_flush(ctx, NULL)) != ETNA_OK)
+    if((status = etna_flush(ctx_, NULL)) != ETNA_OK)
     {
         fprintf(stderr, "%s: Internal error %d while flushing.\n", __func__, status);
         abort();
@@ -396,19 +421,20 @@ void etna_cmd_stream_finish(struct etna_cmd_stream *ctx)
     fprintf(stderr, "finish: Waiting for signal...\n");
 #endif
     /* Wait for signal */
-    if(viv_user_signal_wait(ctx->conn, ctx->sig_id, VIV_WAIT_INDEFINITE) != 0)
+    if(viv_user_signal_wait(ctx->base.conn, ctx->sig_id, VIV_WAIT_INDEFINITE) != 0)
     {
         fprintf(stderr, "%s: Internal error while waiting for signal.\n", __func__);
         abort();
     }
 }
 
-void etna_dump_cmd_buffer(struct etna_cmd_stream *ctx)
+void etna_dump_cmd_buffer(struct etna_cmd_stream *ctx_)
 {
-    uint32_t start_offset = ctx->cmdbuf[ctx->cur_buf]->startOffset/4 + 8;
-    uint32_t *buf = &ctx->buf[start_offset];
-    size_t size = ctx->offset - start_offset;
-    fprintf(stderr, "cmdbuf %u offset %u:\n", ctx->cur_buf, start_offset);
+    struct etna_cmd_stream_priv *ctx = etna_cmd_stream_priv(ctx_);
+    uint32_t start_offset = ctx->cmdbuf[ctx->base.cur_buf]->startOffset/4 + 8;
+    uint32_t *buf = &ctx->base.buf[start_offset];
+    size_t size = ctx->base.offset - start_offset;
+    fprintf(stderr, "cmdbuf %u offset %u:\n", ctx->base.cur_buf, start_offset);
     for(unsigned idx=0; idx<size; idx+=8)
     {
         for (unsigned i=idx; i<size && i<idx+8; ++i)
@@ -419,11 +445,55 @@ void etna_dump_cmd_buffer(struct etna_cmd_stream *ctx)
     }
 }
 
+static uint32_t append_bo(struct etna_cmd_stream *stream, struct etna_bo *bo)
+{
+	struct etna_cmd_stream_priv *priv = etna_cmd_stream_priv(stream);
+	uint32_t idx;
+
+	idx = APPEND(priv, bos);
+	priv->bos[idx] = etna_bo_ref(bo);
+	return idx;
+}
+
+/* add (if needed) bo, return idx: */
+static uint32_t bo2idx(struct etna_cmd_stream *stream, struct etna_bo *bo,
+		uint32_t flags)
+{
+	struct etna_cmd_stream_priv *priv = etna_cmd_stream_priv(stream);
+	uint32_t idx;
+
+	pthread_mutex_lock(&idx_lock);
+
+	if (!bo->current_stream) {
+		idx = append_bo(stream, bo);
+		bo->current_stream = stream;
+		bo->idx = idx;
+	} else if (bo->current_stream == stream) {
+		idx = bo->idx;
+	} else {
+		/* slow-path: */
+		for (idx = 0; idx < priv->nr_bos; idx++)
+			if (priv->bos[idx] == bo)
+				break;
+		if (idx == priv->nr_bos) {
+			/* not found */
+			idx = append_bo(stream, bo);
+		}
+	}
+	pthread_mutex_unlock(&idx_lock);
+	return idx;
+}
+
 void etna_cmd_stream_reloc(struct etna_cmd_stream *cmdbuf, const struct etna_reloc *reloc)
 {
     uint32_t gpuaddr = 0;
-    if (reloc && reloc->bo)
+    if (reloc && reloc->bo) {
         gpuaddr = etna_bo_gpu_address(reloc->bo) + reloc->offset;
+        uint32_t idx = bo2idx(cmdbuf, reloc->bo, reloc->flags);
+#ifdef DEBUG_BO
+        printf("%s: added bo %p as idx %d\n", __func__, reloc->bo, idx);
+#endif
+    }
     etna_cmd_stream_emit(cmdbuf, gpuaddr);
 }
 

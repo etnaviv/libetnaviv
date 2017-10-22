@@ -102,5 +102,24 @@ static inline uint32_t etna_log2_fixp55(unsigned width)
     return etna_float_to_fixp55(logf((float)width) * RCPLOG2);
 }
 
+static inline void *grow(void *ptr, uint32_t nr, uint32_t *max, uint32_t sz)
+{
+	if ((nr + 1) > *max) {
+		if ((*max * 2) < (nr + 1))
+			*max = nr + 5;
+		else
+			*max = *max * 2;
+		ptr = realloc(ptr, *max * sz);
+	}
+
+	return ptr;
+}
+
+#define APPEND(x, name) ({ \
+	(x)->name = grow((x)->name, (x)->nr_ ## name, &(x)->max_ ## name, sizeof((x)->name[0])); \
+	(x)->nr_ ## name ++; \
+})
+
+
 #endif
 

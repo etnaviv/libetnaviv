@@ -4,6 +4,7 @@
 
 #include "gc_abi.h"
 #include "viv_internal.h"
+#include "etna_internal.h"
 
 #include <assert.h>
 
@@ -47,7 +48,7 @@ int etna_queue_alloc(struct etna_queue *queue, struct _gcsHAL_INTERFACE **cmd_ou
          *
          * Don't request a fence to prevent an infinite loop.
          */
-        assert(queue->ctx->queue == queue);
+        assert(etna_cmd_stream_priv(queue->ctx)->queue == queue);
         if((rv = etna_flush(queue->ctx, NULL)) != ETNA_OK)
             return rv;
         assert(queue->count == 0);

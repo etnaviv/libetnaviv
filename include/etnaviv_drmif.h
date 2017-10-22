@@ -158,17 +158,6 @@ uint32_t etna_bo_gpu_address(struct etna_bo *bo);
 /* cmd stream functions:
  */
 
-/**TODO: move this to internal structure */
-/* Number of command buffers, to be used in a circular fashion.
- */
-#define NUM_COMMAND_BUFFERS 5
-
-struct etna_cmdbuf {
-    /* sync signal for command buffer */
-    int sig_id;
-    struct etna_bo *bo;
-};
-
 struct etna_cmd_stream {
     /* Driver connection */
     struct etna_device *conn;
@@ -184,23 +173,6 @@ struct etna_cmd_stream {
     uint32_t end;
     /* Current buffer id (index into cmdbuf) */
     int cur_buf;
-    /* Stored current buffer id when building context */
-    int stored_buf;
-    /* Synchronization signal for finish() */
-    int sig_id;
-    /* Structures for kernel */
-    struct _gcoCMDBUF *cmdbuf[NUM_COMMAND_BUFFERS];
-    /* Extra information per command buffer */
-    struct etna_cmdbuf cmdbufi[NUM_COMMAND_BUFFERS];
-    /* number of unsignalled flushes (used to work around kernel bug) */
-    int flushes;
-    /* command queue */
-    struct etna_queue *queue;
-    /* context */
-    uint64_t ctx;
-    /* context reset notification */
-    void (*reset_notify)(struct etna_cmd_stream *stream, void *priv);
-    void *reset_notify_priv;
 };
 
 /* internal (non-inline) part of etna_reserve.
