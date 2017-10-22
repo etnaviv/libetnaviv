@@ -264,7 +264,7 @@ int viv_unlock_vidmem(struct etna_device *conn, viv_node_t node, enum viv_surf_t
 
 /** Free a block of video memory previously allocated with viv_alloc_linear_vidmem.
  */
-int viv_free_vidmem(struct etna_device *conn, viv_node_t node, bool submit_as_event);
+int viv_release_vidmem(struct etna_device *conn, viv_node_t node);
 
 /** Free block of contiguous memory previously allocated with viv_alloc_contiguous.
  */

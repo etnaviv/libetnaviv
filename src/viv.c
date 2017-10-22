@@ -646,9 +646,8 @@ int viv_reset(struct etna_device *conn)
     return viv_invoke(conn, &id);
 }
 
-int viv_free_vidmem(struct etna_device *conn, viv_node_t node, bool submit_as_event)
+int viv_release_vidmem(struct etna_device *conn, viv_node_t node)
 {
-#ifdef GCABI_NO_FREE_VIDEO_MEMORY
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_RELEASE_VIDEO_MEMORY,
         .u = {
@@ -657,26 +656,7 @@ int viv_free_vidmem(struct etna_device *conn, viv_node_t node, bool submit_as_ev
             }
         }
     };
-#else
-    gcsHAL_INTERFACE id = {
-        .command = gcvHAL_FREE_VIDEO_MEMORY,
-        .u = {
-            .FreeVideoMemory = {
-                .node = HANDLE_TO_VIV(node)
-            }
-        }
-    };
-#endif
-    if(submit_as_event) /* submit as event immediately */
-    {
-        struct _gcsQUEUE queue = {
-            .next = PTR_TO_VIV(NULL),
-            .iface = id
-        };
-        return viv_event_commit(conn, &queue);
-    } else { /* submit as command */
-        return viv_invoke(conn, &id);
-    }
+    return viv_invoke(conn, &id);
 }
 
 #ifdef GCABI_VIRTUAL_COMMAND_BUFFERS

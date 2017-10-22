@@ -104,22 +104,6 @@ int etna_queue_unlock_vidmem(struct etna_queue *queue, viv_node_t node, enum viv
     return ETNA_OK;
 }
 
-int etna_queue_free_vidmem(struct etna_queue *queue, viv_node_t node)
-{
-    struct _gcsHAL_INTERFACE *cmd = NULL;
-    int rv;
-    if((rv=etna_queue_alloc(queue, &cmd)) != ETNA_OK)
-        return rv;
-#ifdef GCABI_NO_FREE_VIDEO_MEMORY
-    cmd->command = gcvHAL_RELEASE_VIDEO_MEMORY;
-    cmd->u.ReleaseVideoMemory.node = HANDLE_TO_VIV(node);
-#else
-    cmd->command = gcvHAL_FREE_VIDEO_MEMORY;
-    cmd->u.FreeVideoMemory.node = HANDLE_TO_VIV(node);
-#endif
-    return ETNA_OK;
-}
-
 int etna_queue_unmap_user_memory(struct etna_queue *queue, void *memory, size_t size, viv_usermem_t info, viv_addr_t address)
 {
     struct _gcsHAL_INTERFACE *cmd = NULL;
