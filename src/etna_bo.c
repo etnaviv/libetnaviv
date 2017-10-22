@@ -43,6 +43,7 @@
 #define ETNA_VIDMEM_ALIGNMENT (0x100)
 
 bool fake_dmabuf_mode = false;
+static uint64_t total_allocated = 0;
 
 #ifdef DEBUG
 static const char *etna_bo_surf_type(struct etna_bo *mem)
@@ -222,6 +223,11 @@ struct etna_bo* etna_bo_new(struct etna_device *conn, uint32_t bytes, uint32_t f
             return NULL;
         }
     }
+    if (mem->bo_type == ETNA_BO_TYPE_VIDMEM)
+        total_allocated += mem->size;
+#ifdef DEBUG_BO
+    printf("%s: total allocated: %dkiB\n", __func__, (unsigned)total_allocated / 1024);
+#endif
     return mem;
 }
 
@@ -431,6 +437,11 @@ int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue)
         }
         break;
     }
+    if (mem->bo_type == ETNA_BO_TYPE_VIDMEM)
+        total_allocated -= mem->size;
+#ifdef DEBUG_BO
+    printf("%s: total allocated: %dKiB\n", __func__, (unsigned)total_allocated / 1024);
+#endif
     ETNA_FREE(mem);
     return rv;
 }
