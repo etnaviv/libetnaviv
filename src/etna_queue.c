@@ -49,7 +49,7 @@ int etna_queue_alloc(struct etna_queue *queue, struct _gcsHAL_INTERFACE **cmd_ou
          * Don't request a fence to prevent an infinite loop.
          */
         assert(etna_cmd_stream_priv(queue->ctx)->queue == queue);
-        if((rv = etna_flush(queue->ctx, NULL)) != ETNA_OK)
+        if((rv = etna_flush(queue->ctx)) != ETNA_OK)
             return rv;
         assert(queue->count == 0);
     }

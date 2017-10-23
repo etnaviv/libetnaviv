@@ -254,7 +254,7 @@ void _etna_cmd_stream_reserve_internal(struct etna_cmd_stream *ctx_, size_t n)
             abort(); /* buffer is in invalid state XXX need some kind of recovery */
         }
         /* Otherwise, if there is something to be committed left in the current command buffer, commit it */
-        if((status = etna_flush(ctx_, NULL)) != ETNA_OK)
+        if((status = etna_flush(ctx_)) != ETNA_OK)
         {
             fprintf(stderr, "%s: reserve failed: %i\n", __func__, status);
             abort(); /* buffer is in invalid state XXX need some kind of recovery */
@@ -286,19 +286,18 @@ static void unref_bos(struct etna_cmd_stream_priv *priv)
     priv->nr_bos = 0;
 }
 
-int etna_flush(struct etna_cmd_stream *ctx_, uint32_t *fence_out)
+int etna_flush(struct etna_cmd_stream *ctx_)
 {
     struct etna_cmd_stream_priv *ctx = etna_cmd_stream_priv(ctx_);
     int status = ETNA_OK;
+    uint32_t fence;
     if(ctx == NULL)
         return ETNA_INVALID_ADDR;
     if(ctx->base.cur_buf == ETNA_CTX_BUFFER)
         /* Can never flush while building context buffer */
         return ETNA_INTERNAL_ERROR;
 
-    if(fence_out) /* is a fence handle requested? */
     {
-        uint32_t fence;
         int signal;
         /* Need to lock the fence mutex to make sure submits are ordered by
          * fence number.
@@ -322,7 +321,6 @@ int etna_flush(struct etna_cmd_stream *ctx_, uint32_t *fence_out)
             fprintf(stderr, "%s: error %i queueing fence signal %i\n", __func__, status, signal);
             goto unlock_and_return_status;
         }
-        *fence_out = fence;
     }
     /***** Start fence mutex locked */
     /* Unreference bos */
@@ -345,8 +343,8 @@ int etna_flush(struct etna_cmd_stream *ctx_, uint32_t *fence_out)
 #endif
                 goto unlock_and_return_status;
             }
-            if(fence_out) /* mark fence as submitted to kernel */
-                _viv_fence_mark_pending(ctx->base.conn, *fence_out);
+            /* mark fence as submitted to kernel */
+            _viv_fence_mark_pending(ctx->base.conn, fence);
         }
         goto unlock_and_return_status;
     }
@@ -370,11 +368,8 @@ int etna_flush(struct etna_cmd_stream *ctx_, uint32_t *fence_out)
 #endif
         goto unlock_and_return_status;
     }
-    if(fence_out)
-    {
-        _viv_fence_mark_pending(ctx->base.conn, *fence_out);
-        pthread_mutex_unlock(&ctx->base.conn->fence_mutex);
-    }
+    _viv_fence_mark_pending(ctx->base.conn, fence);
+    pthread_mutex_unlock(&ctx->base.conn->fence_mutex);
     /***** End fence mutex locked */
     cur_buf->startOffset = cur_buf->offset + END_COMMIT_CLEARANCE;
     cur_buf->offset = cur_buf->startOffset + BEGIN_COMMIT_CLEARANCE;
@@ -391,14 +386,14 @@ int etna_flush(struct etna_cmd_stream *ctx_, uint32_t *fence_out)
     /* Set writing offset for next etna_cmd_stream_reserve. For convenience this is
        stored as an index instead of a byte offset.  */
     ctx->base.offset = cur_buf->offset / 4;
+    ctx->submit_fence = fence;
 #ifdef DEBUG
     fprintf(stderr, "  New start offset: %x New offset: %x\n", cur_buf->startOffset, cur_buf->offset);
 #endif
     return ETNA_OK;
 
 unlock_and_return_status: /* Unlock fence mutex (if necessary) and return status */
-    if(fence_out)
-        pthread_mutex_unlock(&ctx->base.conn->fence_mutex);
+    pthread_mutex_unlock(&ctx->base.conn->fence_mutex);
     return status;
 }
 
@@ -412,7 +407,7 @@ void etna_cmd_stream_finish(struct etna_cmd_stream *ctx_)
         fprintf(stderr, "%s: Internal error while queing signal.\n", __func__);
         abort();
     }
-    if((status = etna_flush(ctx_, NULL)) != ETNA_OK)
+    if((status = etna_flush(ctx_)) != ETNA_OK)
     {
         fprintf(stderr, "%s: Internal error %d while flushing.\n", __func__, status);
         abort();
@@ -499,18 +494,20 @@ void etna_cmd_stream_reloc(struct etna_cmd_stream *cmdbuf, const struct etna_rel
 
 uint32_t etna_cmd_stream_timestamp(struct etna_cmd_stream *stream)
 {
-    /* TODO */
-    return 0;
+    struct etna_cmd_stream_priv *priv = etna_cmd_stream_priv(stream);
+    return priv->submit_fence;
 }
 
 void etna_cmd_stream_flush(struct etna_cmd_stream *stream)
 {
-    etna_flush(stream, NULL);
+    etna_flush(stream);
 }
 
 void etna_cmd_stream_flush2(struct etna_cmd_stream *stream, int in_fence_fd,
 			    int *out_fence_fd)
 {
     /* in_fence_fd? */
-    etna_flush(stream, (uint32_t*)out_fence_fd);
+    assert(in_fence_fd == -1);
+    assert(!out_fence_fd);
+    etna_flush(stream);
 }

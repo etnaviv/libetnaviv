@@ -20,10 +20,15 @@ void etna_pipe_del(struct etna_pipe *pipe)
 
 int etna_pipe_wait(struct etna_pipe *pipe, uint32_t timestamp, uint32_t ms)
 {
-    return 0; /* TODO */
+    return viv_fence_finish(pipe->gpu->dev, timestamp, ms);
 }
+
+#define PIPE_TIMEOUT_INFINITE 0xffffffffffffffffull
 
 int etna_pipe_wait_ns(struct etna_pipe *pipe, uint32_t timestamp, uint64_t ns)
 {
-    return 0; /* TODO */
+    uint32_t ms = (ns + 999) / 1000;
+    if (ns == PIPE_TIMEOUT_INFINITE)
+        ms = 0xffffffff;
+    return viv_fence_finish(pipe->gpu->dev, timestamp, ms);
 }

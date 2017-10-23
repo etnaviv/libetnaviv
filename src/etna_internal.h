@@ -82,6 +82,8 @@ struct etna_cmd_stream_priv {
     /* track bo's used in current submit */
     struct etna_bo **bos;
     uint32_t nr_bos, max_bos;
+    /* last fence id */
+    uint32_t submit_fence;
 };
 
 #endif

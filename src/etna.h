@@ -87,7 +87,7 @@ int etna_create(struct etna_device *conn, struct etna_cmd_stream **ctx);
 /* Send currently queued commands to kernel.
  * @return OK on success, error code otherwise
  */
-int etna_flush(struct etna_cmd_stream *ctx, uint32_t *fence_out);
+int etna_flush(struct etna_cmd_stream *ctx);
 
 /* print command buffer for debugging */
 void etna_dump_cmd_buffer(struct etna_cmd_stream *ctx);
