@@ -82,6 +82,38 @@ static int gpu_context_free(struct etna_cmd_stream_priv *ctx)
     return ETNA_OK;
 }
 
+/* Clear a command buffer */
+static void clear_buffer(gcoCMDBUF cmdbuf)
+{
+    /* Prepare command buffer for use */
+    cmdbuf->startOffset = 0x0;
+    cmdbuf->offset = BEGIN_COMMIT_CLEARANCE;
+}
+
+/* Switch to next buffer, optionally wait for it to be available */
+static int switch_next_buffer(struct etna_cmd_stream_priv *ctx)
+{
+    int next_buf_id = (ctx->base.cur_buf + 1) % NUM_COMMAND_BUFFERS;
+#if 0
+    fprintf(stderr, "Switching to new buffer %i\n", next_buf_id);
+#endif
+    if(viv_user_signal_wait(ctx->base.conn, ctx->cmdbufi[next_buf_id].sig_id, VIV_WAIT_INDEFINITE) != 0)
+    {
+#ifdef DEBUG
+        fprintf(stderr, "Error waiting for command buffer sync signal\n");
+#endif
+        return ETNA_INTERNAL_ERROR;
+    }
+    clear_buffer(ctx->cmdbuf[next_buf_id]);
+    ctx->base.cur_buf = next_buf_id;
+    ctx->base.buf = VIV_TO_PTR(ctx->cmdbuf[next_buf_id]->logical);
+    ctx->base.offset = ctx->cmdbuf[next_buf_id]->offset / 4;
+#ifdef DEBUG
+    fprintf(stderr, "Switched to command buffer %i\n", ctx->cur_buf);
+#endif
+    return ETNA_OK;
+}
+
 struct etna_cmd_stream *etna_cmd_stream_new(struct etna_pipe *pipe, uint32_t size,
 		void (*reset_notify)(struct etna_cmd_stream *stream, void *priv),
 		void *priv)
@@ -163,39 +195,15 @@ struct etna_cmd_stream *etna_cmd_stream_new(struct etna_pipe *pipe, uint32_t siz
     ctx->base.cur_buf = ETNA_NO_BUFFER;
     ctx->base.end = (COMMAND_BUFFER_SIZE - END_COMMIT_CLEARANCE)/4;
 
-    return &ctx->base;
-}
-
-/* Clear a command buffer */
-static void clear_buffer(gcoCMDBUF cmdbuf)
-{
-    /* Prepare command buffer for use */
-    cmdbuf->startOffset = 0x0;
-    cmdbuf->offset = BEGIN_COMMIT_CLEARANCE;
-}
-
-/* Switch to next buffer, optionally wait for it to be available */
-static int switch_next_buffer(struct etna_cmd_stream_priv *ctx)
-{
-    int next_buf_id = (ctx->base.cur_buf + 1) % NUM_COMMAND_BUFFERS;
-#if 0
-    fprintf(stderr, "Switching to new buffer %i\n", next_buf_id);
-#endif
-    if(viv_user_signal_wait(ctx->base.conn, ctx->cmdbufi[next_buf_id].sig_id, VIV_WAIT_INDEFINITE) != 0)
+    /* Make sure there is an active buffer */
+    if((rv = switch_next_buffer(ctx)) != ETNA_OK)
     {
-#ifdef DEBUG
-        fprintf(stderr, "Error waiting for command buffer sync signal\n");
-#endif
-        return ETNA_INTERNAL_ERROR;
+        fprintf(stderr, "%s: can't switch to next command buffer: %i\n", __func__, rv);
+        abort(); /* Buffer is in invalid state XXX need some kind of recovery.
+                    This could involve waiting and re-uploading the context state. */
     }
-    clear_buffer(ctx->cmdbuf[next_buf_id]);
-    ctx->base.cur_buf = next_buf_id;
-    ctx->base.buf = VIV_TO_PTR(ctx->cmdbuf[next_buf_id]->logical);
-    ctx->base.offset = ctx->cmdbuf[next_buf_id]->offset / 4;
-#ifdef DEBUG
-    fprintf(stderr, "Switched to command buffer %i\n", ctx->cur_buf);
-#endif
-    return ETNA_OK;
+
+    return &ctx->base;
 }
 
 void etna_cmd_stream_del(struct etna_cmd_stream *ctx_)
@@ -233,31 +241,14 @@ void _etna_cmd_stream_reserve_internal(struct etna_cmd_stream *ctx_, size_t n)
         fprintf(stderr, "%s: Command buffer overflow! This is likely a programming error in the GPU driver.\n", __func__);
         abort();
     }
-    if(ctx->base.cur_buf != ETNA_NO_BUFFER)
-    {
 #if 0
-        fprintf(stderr, "Submitting old buffer %i\n", ctx->cur_buf);
+    fprintf(stderr, "Submitting old buffer %i\n", ctx->base.cur_buf);
 #endif
-        /* Queue signal to signify when buffer is available again */
-        if((status = etna_queue_signal(ctx->queue, ctx->cmdbufi[ctx->base.cur_buf].sig_id, VIV_WHERE_COMMAND)) != ETNA_OK)
-        {
-            fprintf(stderr, "%s: queue signal for old buffer failed: %i\n", __func__, status);
-            abort(); /* buffer is in invalid state XXX need some kind of recovery */
-        }
-        /* Otherwise, if there is something to be committed left in the current command buffer, commit it */
-        if((status = etna_flush(ctx_)) != ETNA_OK)
-        {
-            fprintf(stderr, "%s: reserve failed: %i\n", __func__, status);
-            abort(); /* buffer is in invalid state XXX need some kind of recovery */
-        }
-    }
-
-    /* Move on to next buffer if not enough free in current one */
-    if((status = switch_next_buffer(ctx)) != ETNA_OK)
+    /* Otherwise, if there is something to be committed left in the current command buffer, commit it */
+    if((status = etna_flush(ctx_)) != ETNA_OK)
     {
-        fprintf(stderr, "%s: can't switch to next command buffer: %i\n", __func__, status);
-        abort(); /* Buffer is in invalid state XXX need some kind of recovery.
-                    This could involve waiting and re-uploading the context state. */
+        fprintf(stderr, "%s: reserve failed: %i\n", __func__, status);
+        abort(); /* buffer is in invalid state XXX need some kind of recovery */
     }
 }
 
@@ -319,6 +310,13 @@ int etna_flush(struct etna_cmd_stream *ctx_)
     /* Unreference bos */
     unref_bos(ctx);
 
+    /* Queue signal to signify when buffer is available again */
+    if((status = etna_queue_signal(ctx->queue, ctx->cmdbufi[ctx->base.cur_buf].sig_id, VIV_WHERE_COMMAND)) != ETNA_OK)
+    {
+        fprintf(stderr, "%s: queue signal for old buffer failed: %i\n", __func__, status);
+        abort(); /* buffer is in invalid state XXX need some kind of recovery */
+    }
+
     /* Make sure to unlock the mutex before returning */
     gcoCMDBUF cur_buf = ctx->cmdbuf[ctx->base.cur_buf];
 
@@ -338,23 +336,21 @@ int etna_flush(struct etna_cmd_stream *ctx_)
         goto unlock_and_return_status;
     }
     _viv_fence_mark_pending(ctx->base.conn, fence);
+    ctx->submit_fence = fence;
     pthread_mutex_unlock(&ctx->base.conn->fence_mutex);
     /***** End fence mutex locked */
-    cur_buf->startOffset = cur_buf->offset + END_COMMIT_CLEARANCE;
-    cur_buf->offset = cur_buf->startOffset + BEGIN_COMMIT_CLEARANCE;
 
-    if((cur_buf->offset + END_COMMIT_CLEARANCE) >= COMMAND_BUFFER_SIZE)
+    /* Move on to next buffer */
+    if((status = switch_next_buffer(ctx)) != ETNA_OK)
     {
-        /* nothing more fits in buffer, prevent warning about buffer overflow
-           on next etna_cmd_stream_reserve.
-         */
-        cur_buf->startOffset = cur_buf->offset = COMMAND_BUFFER_SIZE - END_COMMIT_CLEARANCE;
+        fprintf(stderr, "%s: can't switch to next command buffer: %i\n", __func__, status);
+        abort(); /* Buffer is in invalid state XXX need some kind of recovery.
+                    This could involve waiting and re-uploading the context state. */
     }
 
-    /* Set writing offset for next etna_cmd_stream_reserve. For convenience this is
-       stored as an index instead of a byte offset.  */
-    ctx->base.offset = cur_buf->offset / 4;
-    ctx->submit_fence = fence;
+    /* Reset context */
+    ctx->reset_notify(ctx_, ctx->reset_notify_priv);
+
 #ifdef DEBUG
     fprintf(stderr, "  New start offset: %x New offset: %x\n", cur_buf->startOffset, cur_buf->offset);
 #endif
