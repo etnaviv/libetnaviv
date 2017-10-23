@@ -70,8 +70,6 @@ struct etna_cmd_stream_priv {
     struct _gcoCMDBUF *cmdbuf[NUM_COMMAND_BUFFERS];
     /* Extra information per command buffer */
     struct etna_cmdbuf cmdbufi[NUM_COMMAND_BUFFERS];
-    /* number of unsignalled flushes (used to work around kernel bug) */
-    int flushes;
     /* command queue */
     struct etna_queue *queue;
     /* context */

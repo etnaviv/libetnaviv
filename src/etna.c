@@ -41,15 +41,6 @@ static pthread_mutex_t idx_lock = PTHREAD_MUTEX_INITIALIZER;
 //#define DEBUG
 //#define DEBUG_CMDBUF
 
-/* Maximum number of flushes without queuing a signal (per command buffer).
-   If this amount is reached, we roll to the next command buffer,
-   which automatically queues a signal.
-   XXX works around driver bug on (at least) cubox, for which drivers
-       is this not needed? Not urgent as this does not result in a
-       deducible performance impact.
-*/
-#define ETNA_MAX_UNSIGNALED_FLUSHES (40)
-
 static int gpu_context_initialize(struct etna_cmd_stream_priv *ctx)
 {
     /* attach to GPU */
@@ -296,6 +287,8 @@ int etna_flush(struct etna_cmd_stream *ctx_)
     if(ctx->base.cur_buf == ETNA_CTX_BUFFER)
         /* Can never flush while building context buffer */
         return ETNA_INTERNAL_ERROR;
+    if(ctx->base.cur_buf == ETNA_NO_BUFFER || (ctx->base.offset*4 <= (ctx->cmdbuf[ctx->base.cur_buf]->startOffset + BEGIN_COMMIT_CLEARANCE)))
+        return ETNA_OK; /* Nothing to do */
 
     {
         int signal;
@@ -327,27 +320,7 @@ int etna_flush(struct etna_cmd_stream *ctx_)
     unref_bos(ctx);
 
     /* Make sure to unlock the mutex before returning */
-    struct _gcsQUEUE *queue_first = _etna_queue_first(ctx->queue);
-    gcoCMDBUF cur_buf = (ctx->base.cur_buf != ETNA_NO_BUFFER) ? ctx->cmdbuf[ctx->base.cur_buf] : NULL;
-
-    if(cur_buf == NULL || (ctx->base.offset*4 <= (cur_buf->startOffset + BEGIN_COMMIT_CLEARANCE)))
-    {
-        /* Nothing in command buffer; but if we end up here there may be kernel commands to submit. Do this seperately. */
-        if(queue_first != NULL)
-        {
-            ctx->flushes = 0;
-            if((status = viv_event_commit(ctx->base.conn, queue_first)) != 0)
-            {
-#ifdef DEBUG
-                fprintf(stderr, "Error committing kernel commands\n");
-#endif
-                goto unlock_and_return_status;
-            }
-            /* mark fence as submitted to kernel */
-            _viv_fence_mark_pending(ctx->base.conn, fence);
-        }
-        goto unlock_and_return_status;
-    }
+    gcoCMDBUF cur_buf = ctx->cmdbuf[ctx->base.cur_buf];
 
     cur_buf->offset = ctx->base.offset*4; /* Copy over current end offset into CMDBUF, for kernel */
 #ifdef DEBUG
@@ -357,11 +330,7 @@ int etna_flush(struct etna_cmd_stream *ctx_)
 #ifdef DEBUG_CMDBUF
     etna_dump_cmd_buffer(ctx);
 #endif
-    if(!queue_first)
-        ctx->flushes += 1;
-    else
-        ctx->flushes = 0;
-    if((status = viv_commit(ctx->base.conn, cur_buf, ctx->ctx, queue_first)) != 0)
+    if((status = viv_commit(ctx->base.conn, cur_buf, ctx->ctx, _etna_queue_first(ctx->queue))) != 0)
     {
 #ifdef DEBUG
         fprintf(stderr, "Error committing command buffer\n");
@@ -374,8 +343,7 @@ int etna_flush(struct etna_cmd_stream *ctx_)
     cur_buf->startOffset = cur_buf->offset + END_COMMIT_CLEARANCE;
     cur_buf->offset = cur_buf->startOffset + BEGIN_COMMIT_CLEARANCE;
 
-    if((cur_buf->offset + END_COMMIT_CLEARANCE) >= COMMAND_BUFFER_SIZE ||
-       ctx->flushes > ETNA_MAX_UNSIGNALED_FLUSHES)
+    if((cur_buf->offset + END_COMMIT_CLEARANCE) >= COMMAND_BUFFER_SIZE)
     {
         /* nothing more fits in buffer, prevent warning about buffer overflow
            on next etna_cmd_stream_reserve.
