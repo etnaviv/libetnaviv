@@ -149,15 +149,7 @@ int viv_ioctl(struct etna_device *conn, int request, void *data, size_t size)
     };
     int ret, old_errno = errno;
 
-    do {
-        errno = 0;
-        ret = ioctl(conn->fd, request, &ic);
-    } while (ret == -1 && errno == EINTR);
-
-    /* if there was no error, restore the old errno for proper errno handling */
-    if(errno == 0)
-        errno = old_errno;
-
+    ret = ioctl(conn->fd, request, &ic);
     return ret;
 }
 
