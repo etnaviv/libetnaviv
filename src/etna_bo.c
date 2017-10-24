@@ -205,6 +205,7 @@ struct etna_bo* etna_bo_new(struct etna_device *conn, uint32_t bytes, uint32_t f
 #ifdef DEBUG
             fprintf(stderr, "Error allocating memory\n");
 #endif
+            abort();
             return NULL;
         }
 #ifdef DEBUG
@@ -214,6 +215,7 @@ struct etna_bo* etna_bo_new(struct etna_device *conn, uint32_t bytes, uint32_t f
         if(status != ETNA_OK)
         {
             etna_bo_del_ext(mem, NULL);
+            abort();
             return NULL;
         }
     }
@@ -378,12 +380,14 @@ int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue)
             if((rv = etna_bo_unlock(conn, mem, queue)) != ETNA_OK)
             {
                 fprintf(stderr, "etna: Warning: could not unlock memory\n");
+                abort();
             }
         }
         /* imx8: release immediately, do not send as event */
         if((rv = viv_release_vidmem(conn, mem->node)) != ETNA_OK)
         {
             fprintf(stderr, "etna: Warning: could not free video memory\n");
+            abort();
         }
         break;
     case ETNA_BO_TYPE_VIDMEM_EXTERNAL:

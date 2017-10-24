@@ -5,11 +5,13 @@
 #include "gc_abi.h"
 #include "viv_internal.h"
 #include "etna_internal.h"
+#include "etna_util.h"
 
+#include <stdio.h>
 #include <assert.h>
 
 /* Maximum number of kernel commands in queue */
-#define ETNA_QUEUE_CAPACITY (64)
+#define ETNA_QUEUE_CAPACITY (512)
 
 int etna_queue_create(struct etna_cmd_stream *ctx, struct etna_queue **queue_out)
 {
@@ -42,16 +44,9 @@ int etna_queue_alloc(struct etna_queue *queue, struct _gcsHAL_INTERFACE **cmd_ou
         return ETNA_INVALID_ADDR;
     if(queue->count == queue->max_count)
     {
-        int rv;
-        /* Queue is full, flush context. Assert that there is a one-to-one relationship
-         * between queue and etna context so that flushing the context flushes this queue.
-         *
-         * Don't request a fence to prevent an infinite loop.
-         */
-        assert(etna_cmd_stream_priv(queue->ctx)->queue == queue);
-        if((rv = etna_flush(queue->ctx)) != ETNA_OK)
-            return rv;
-        assert(queue->count == 0);
+        /* WHOOPS */
+        fprintf(stderr, "%s: queue full\n", __func__);
+        abort();
     }
     struct _gcsQUEUE *cmd = &queue->queue[queue->count++];
     cmd->next = PTR_TO_VIV(NULL);

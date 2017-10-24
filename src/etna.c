@@ -327,10 +327,8 @@ int etna_flush(struct etna_cmd_stream *ctx_)
 #endif
     if((status = viv_commit(ctx->base.conn, cur_buf, ctx->ctx, _etna_queue_first(ctx->queue))) != 0)
     {
-#ifdef DEBUG
         fprintf(stderr, "Error committing command buffer\n");
-#endif
-        goto unlock_and_return_status;
+        abort();
     }
     _viv_fence_mark_pending(ctx->base.conn, fence);
     ctx->submit_fence = fence;
