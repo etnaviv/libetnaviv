@@ -41,7 +41,6 @@
 
 /* Special command buffer ids */
 #define ETNA_NO_BUFFER (-1)
-#define ETNA_CTX_BUFFER (-2)
 
 /* Number of bytes in one command buffer */
 #define COMMAND_BUFFER_SIZE (0x8000)

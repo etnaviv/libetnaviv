@@ -275,9 +275,6 @@ int etna_flush(struct etna_cmd_stream *ctx_)
     uint32_t fence;
     if(ctx == NULL)
         return ETNA_INVALID_ADDR;
-    if(ctx->base.cur_buf == ETNA_CTX_BUFFER)
-        /* Can never flush while building context buffer */
-        return ETNA_INTERNAL_ERROR;
     if(ctx->base.cur_buf == ETNA_NO_BUFFER || (ctx->base.offset*4 <= (ctx->cmdbuf[ctx->base.cur_buf]->startOffset + BEGIN_COMMIT_CLEARANCE)))
         return ETNA_OK; /* Nothing to do */
 
