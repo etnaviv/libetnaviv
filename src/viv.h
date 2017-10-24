@@ -32,7 +32,7 @@
 #define VIV_WAIT_INDEFINITE (0xffffffff)
 
 /* Number of signals to keep for fences, max is 32 */
-#define VIV_NUM_FENCE_SIGNALS 32
+#define VIV_NUM_FENCE_SIGNALS 16
 
 /* Return true if fence a was before b */
 #define VIV_FENCE_BEFORE(a,b) ((int32_t)((b)-(a))>0)
