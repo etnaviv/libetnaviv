@@ -96,6 +96,7 @@ int etna_queue_unlock_vidmem(struct etna_queue *queue, viv_node_t node, enum viv
     cmd->command = gcvHAL_UNLOCK_VIDEO_MEMORY;
     cmd->u.UnlockVideoMemory.node = HANDLE_TO_VIV(node);
     cmd->u.UnlockVideoMemory.type = convert_surf_type(type);
+    cmd->u.UnlockVideoMemory.asynchroneous = 1;
     return ETNA_OK;
 }
 
