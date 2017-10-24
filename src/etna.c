@@ -451,6 +451,11 @@ void etna_cmd_stream_reloc(struct etna_cmd_stream *cmdbuf, const struct etna_rel
     etna_cmd_stream_emit(cmdbuf, gpuaddr);
 }
 
+void etna_cmd_stream_ref(struct etna_cmd_stream *stream, struct etna_bo *bo)
+{
+    bo2idx(stream, bo, 0);
+}
+
 uint32_t etna_cmd_stream_timestamp(struct etna_cmd_stream *stream)
 {
     struct etna_cmd_stream_priv *priv = etna_cmd_stream_priv(stream);

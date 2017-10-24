@@ -152,9 +152,6 @@ struct etna_bo *etna_bo_from_usermem_prot(struct etna_device *conn, void *memory
 /* Buffer object from framebuffer range */
 struct etna_bo *etna_bo_from_fbdev(struct etna_device *conn, int fd, size_t offset, size_t size);
 
-/* Temporary: get GPU address of buffer */
-uint32_t etna_bo_gpu_address(struct etna_bo *bo);
-
 /* cmd stream functions:
  */
 
@@ -239,5 +236,11 @@ struct etna_reloc {
 };
 
 void etna_cmd_stream_reloc(struct etna_cmd_stream *stream, const struct etna_reloc *r);
+
+/* Temporary: get GPU address of buffer - these are a hack for supporting
+ * texture descriptors right now.
+ */
+uint32_t etna_bo_gpu_address(struct etna_bo *bo);
+void etna_cmd_stream_ref(struct etna_cmd_stream *stream, struct etna_bo *bo);
 
 #endif /* ETNAVIV_DRMIF_H_ */
