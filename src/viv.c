@@ -512,9 +512,6 @@ int viv_unlock_vidmem(struct etna_device *conn, viv_node_t node, enum viv_surf_t
 
 int viv_commit(struct etna_device *conn, struct _gcoCMDBUF *commandBuffer, viv_context_t context, struct _gcsQUEUE *queue)
 {
-    gcsSTATE_DELTA fake_delta;
-    memset(&fake_delta, 0, sizeof(gcsSTATE_DELTA));
-
     gcsHAL_INTERFACE id = {
         .command = gcvHAL_COMMIT,
         .u = {
@@ -522,7 +519,7 @@ int viv_commit(struct etna_device *conn, struct _gcoCMDBUF *commandBuffer, viv_c
                 .commandBuffer = PTR_TO_VIV(commandBuffer),
                 .context = HANDLE_TO_VIV(context),
                 .queue = PTR_TO_VIV(queue),
-                .delta = PTR_TO_VIV(&fake_delta),
+                .delta = PTR_TO_VIV(NULL),
             }
         }
     };
@@ -531,7 +528,7 @@ int viv_commit(struct etna_device *conn, struct _gcoCMDBUF *commandBuffer, viv_c
     id.u.Commit.count = 1;
     id.u.Commit.commandBuffers[0] = PTR_TO_VIV(commandBuffer);
     id.u.Commit.contexts[0] = HANDLE_TO_VIV(context);
-    id.u.Commit.deltas[0] = PTR_TO_VIV(&fake_delta);
+    id.u.Commit.deltas[0] = PTR_TO_VIV(NULL);
     id.u.Commit.engine1 = gcvENGINE_RENDER; /* As the blob does */
 #endif
 
