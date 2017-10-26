@@ -25,6 +25,7 @@
 #include "etna.h"
 #include "etna_queue.h"
 
+#include <assert.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -118,41 +119,6 @@ static int etna_bo_lock(struct etna_device *conn, struct etna_bo *mem)
     fprintf(stderr, "Locked: phys=%08x log=%08x\n", (uint32_t)mem->address, (uint32_t)mem->logical);
 #endif
 
-    return ETNA_OK;
-}
-
-/* Unlock memory from both CPU and GPU memory space */
-static int etna_bo_unlock(struct etna_device *conn, struct etna_bo *mem, struct etna_queue *queue)
-{
-    if(mem == NULL) return ETNA_INVALID_ADDR;
-    int async = 0;
-    /* Unlocking video memory seems to be a two-step process. First try it synchronously
-     * then the kernel can request an asynchronous component. Just queueing it asynchronously
-     * in the first place will not free the virtual memory on v4 */
-    if(viv_unlock_vidmem(conn, mem->node, mem->type, false, &async) != ETNA_OK)
-    {
-        return ETNA_INTERNAL_ERROR;
-    }
-    if(async)
-    {
-        if(queue)
-        {
-            /* If a queue is passed, add the async part at the end of the queue, to be submitted
-             * with next flush.
-             */
-            if(etna_queue_unlock_vidmem(queue, mem->node, mem->type) != ETNA_OK)
-            {
-                return ETNA_INTERNAL_ERROR;
-            }
-        } else { /* No queue, need to submit async part directly as event */
-            if(viv_unlock_vidmem(conn, mem->node, mem->type, true, &async) != ETNA_OK)
-            {
-                return ETNA_INTERNAL_ERROR;
-            }
-        }
-    }
-    mem->logical = NULL;
-    mem->address = 0;
     return ETNA_OK;
 }
 
@@ -363,6 +329,7 @@ int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue)
     int rv = ETNA_OK;
     if(mem == NULL) return ETNA_OK;
     struct etna_device *conn = mem->conn;
+    int async = 0;
     if (!atomic_dec_and_test(&mem->refcnt)) {
 #ifdef DEBUG_BO
         printf("%s: refcount for %p decreased to %d\n", __func__, mem, atomic_read(&mem->refcnt));
@@ -377,7 +344,8 @@ int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue)
     case ETNA_BO_TYPE_VIDMEM:
         if(mem->logical != NULL)
         {
-            if((rv = etna_bo_unlock(conn, mem, queue)) != ETNA_OK)
+            /* Unlock video memory from both GPU and CPU space */
+            if(viv_unlock_vidmem(conn, mem->node, mem->type, false, &async) != ETNA_OK)
             {
                 fprintf(stderr, "etna: Warning: could not unlock memory\n");
                 abort();
@@ -389,12 +357,35 @@ int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue)
             fprintf(stderr, "etna: Warning: could not free video memory\n");
             abort();
         }
+        if (async) /* Make sure to queue async part after release */
+        {
+            /* Unlocking video memory seems to be a two-step process. First try it synchronously
+             * then the kernel can request an asynchronous component. Just queueing it asynchronously
+             * in the first place will not free the virtual memory on v4 */
+            if(queue)
+            {
+                /* If a queue is passed, add the async part at the end of the queue, to be submitted
+                 * with next flush.
+                 */
+                if(etna_queue_unlock_vidmem(queue, mem->node, mem->type) != ETNA_OK)
+                {
+                    fprintf(stderr, "etna: Warning: could not queue async unlock memory\n");
+                    abort();
+                }
+            } else { /* No queue, need to submit async part directly as event.
+                        This should be safe, as we only get here if no command
+                        stream has a reference anymore. */
+                int async = 1;
+                if(viv_unlock_vidmem(conn, mem->node, mem->type, true, &async) != ETNA_OK)
+                {
+                    fprintf(stderr, "etna: Warning: could not queue async unlock memory\n");
+                    abort();
+                }
+            }
+        }
         break;
     case ETNA_BO_TYPE_VIDMEM_EXTERNAL:
-        if((rv = etna_bo_unlock(conn, mem, queue)) != ETNA_OK)
-        {
-            fprintf(stderr, "etna: Warning: could not unlock memory\n");
-        }
+        assert(0); /* TODO */
         break;
     case ETNA_BO_TYPE_USERMEM:
         if(queue)
