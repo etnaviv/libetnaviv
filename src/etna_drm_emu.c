@@ -1,7 +1,9 @@
 #include "xf86drm.h"
+#include "xf86drmMode.h"
 #include "etna_util.h"
 #include "etna_bo.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -12,6 +14,8 @@
 #include <sys/ioctl.h>
 #include <linux/fb.h>
 
+#define WIDTH 1920
+#define HEIGHT 1080
 /* Just enough to make Mesa work */
 
 drmVersionPtr drmGetVersion(int fd)
@@ -116,4 +120,120 @@ int drmPrimeFDToHandle(int fd, int prime_fd, uint32_t *handle)
 int drmGetCap(int fd, uint64_t capability, uint64_t *value)
 {
     return -1;
+}
+
+int drmOpen(const char *name, const char *busid)
+{
+    printf("drmOpen %s\n", name);
+    assert(0);
+    return -1;
+}
+
+/* drmMode emulation */
+int drmModeConnectorSetProperty(int fd, uint32_t connector_id, uint32_t property_id,
+				    uint64_t value)
+{
+    assert(0);
+    return -1;
+}
+
+static void fill_mode(drmModeModeInfoPtr mode)
+{
+    mode->hdisplay = WIDTH;
+    mode->vdisplay = HEIGHT;
+    mode->vrefresh = 60;
+    mode->type = DRM_MODE_TYPE_BUILTIN | DRM_MODE_TYPE_DEFAULT;
+}
+
+drmModeConnectorPtr drmModeGetConnector(int fd, uint32_t connectorId)
+{
+    static uint32_t id = 0;
+    drmModeConnectorPtr res = ETNA_CALLOC_STRUCT(_drmModeConnector);
+    res->connector_type = DRM_MODE_CONNECTOR_HDMIA;
+    res->subpixel = DRM_MODE_SUBPIXEL_NONE;
+
+    res->count_encoders = 1;
+    res->encoders = &id;
+
+    res->count_modes = 1;
+    res->modes = ETNA_CALLOC_STRUCT(_drmModeModeInfo);
+    fill_mode(&res->modes[0]);
+    return res;
+}
+
+void drmModeFreeConnector( drmModeConnectorPtr ptr )
+{
+    ETNA_FREE(ptr->modes);
+    ETNA_FREE(ptr);
+}
+
+drmModeCrtcPtr drmModeGetCrtc(int fd, uint32_t crtcId)
+{
+    drmModeCrtcPtr res = ETNA_CALLOC_STRUCT(_drmModeCrtc);
+    res->crtc_id = 0;
+    res->buffer_id = 0;
+    res->width = WIDTH;
+    res->height = HEIGHT;
+    res->mode_valid = 1;
+    fill_mode(&res->mode);
+    return res;
+}
+
+void drmModeFreeCrtc( drmModeCrtcPtr ptr )
+{
+    ETNA_FREE(ptr);
+}
+
+drmModeEncoderPtr drmModeGetEncoder(int fd, uint32_t encoder_id)
+{
+    drmModeEncoderPtr res = ETNA_CALLOC_STRUCT(_drmModeEncoder);
+    res->encoder_id = 0;
+    res->crtc_id = 0;
+    res->possible_crtcs = 1<<0;
+    return res;
+}
+
+void drmModeFreeEncoder( drmModeEncoderPtr ptr )
+{
+    ETNA_FREE(ptr);
+}
+
+drmModePropertyPtr drmModeGetProperty(int fd, uint32_t propertyId)
+{
+    assert(0);
+    return NULL;
+}
+
+void drmModeFreeProperty(drmModePropertyPtr ptr)
+{
+}
+
+drmModeResPtr drmModeGetResources(int fd)
+{
+    static uint32_t id = 0;
+    drmModeResPtr res = ETNA_CALLOC_STRUCT(_drmModeRes);
+    res->count_fbs = 1;
+    res->fbs = &id;
+    res->count_crtcs = 1;
+    res->crtcs = &id;
+    res->count_connectors = 1;
+    res->connectors = &id;
+    res->count_encoders = 1;
+    res->encoders = &id;
+    res->min_width = res->max_width = WIDTH;
+    res->min_height = res->max_height = HEIGHT;
+    return res;
+}
+
+void drmModeFreeResources( drmModeResPtr ptr )
+{
+    ETNA_FREE(ptr);
+}
+
+int drmModeSetCrtc(int fd, uint32_t crtcId, uint32_t bufferId,
+                   uint32_t x, uint32_t y, uint32_t *connectors, int count,
+		   drmModeModeInfoPtr mode)
+{
+    printf("drmModeSetCrtc\n");
+    return 0;
 }
