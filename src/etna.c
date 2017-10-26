@@ -263,6 +263,7 @@ static void unref_bos(struct etna_cmd_stream_priv *priv)
 #ifdef DEBUG_BO
         printf("%s: releasing bo %p at index %d\n", __func__, priv->bos[i], i);
 #endif
+        priv->bos[i]->current_stream = NULL;
         etna_bo_del_ext(priv->bos[i], priv->queue);
     }
     priv->nr_bos = 0;
