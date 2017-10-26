@@ -337,7 +337,7 @@ int etna_bo_del_ext(struct etna_bo *mem, struct etna_queue *queue)
         return ETNA_OK;
     }
 #ifdef DEBUG_BO
-    printf("%s: refcount for %p dropped to zero\n", __func__, mem);
+    printf("%s: refcount for %p (node 0x%x), dropped to zero, freeing\n", __func__, mem, (unsigned)mem->node);
 #endif
     switch(mem->bo_type)
     {
@@ -462,6 +462,7 @@ void etna_bo_cpu_fini(struct etna_bo *bo)
 
 uint32_t etna_bo_gpu_address(struct etna_bo *bo)
 {
+    assert(bo->address);
     return bo->address;
 }
 
