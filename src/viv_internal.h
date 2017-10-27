@@ -75,6 +75,7 @@ static inline gceKERNEL_WHERE convert_where(enum viv_where where)
     {
     case VIV_WHERE_COMMAND: return gcvKERNEL_COMMAND;
     case VIV_WHERE_PIXEL: return gcvKERNEL_PIXEL;
+    case VIV_WHERE_BLT: return gcvKERNEL_BLT;
     default: return gcvKERNEL_PIXEL; /* unknown default */
     }
 }

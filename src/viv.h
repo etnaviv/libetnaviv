@@ -102,7 +102,8 @@ enum viv_pool
 enum viv_where
 {
     VIV_WHERE_COMMAND,
-    VIV_WHERE_PIXEL
+    VIV_WHERE_PIXEL,
+    VIV_WHERE_BLT
 };
 
 /* Status code from kernel.
