@@ -35,6 +35,11 @@ void drmFreeVersion(drmVersionPtr version)
     ETNA_FREE(version);
 }
 
+char *drmGetDeviceNameFromFd2(int fd)
+{
+    return "etnaviv";
+}
+
 int drmIoctl(int fd, unsigned long request, void *arg)
 {
     switch(request) {
