@@ -252,10 +252,10 @@ void _etna_cmd_stream_reserve_internal(struct etna_cmd_stream *ctx_, size_t n)
     }
 }
 
-/** Unreference bos, make sure async cleanup is done
- * after the submit only.
+/** Unreference bos, make sure async cleanup is done after the submit only.
+ * Also update buffer synchronization timestamps.
  */
-static void unref_bos(struct etna_cmd_stream_priv *priv)
+static void unref_bos(struct etna_cmd_stream_priv *priv, uint32_t timestamp)
 {
     uint32_t i;
     assert(priv->queue);
@@ -264,6 +264,9 @@ static void unref_bos(struct etna_cmd_stream_priv *priv)
         printf("%s: releasing bo %p at index %d\n", __func__, priv->bos[i], i);
 #endif
         priv->bos[i]->current_stream = NULL;
+        /* TODO actually remember reloc flags which ones to set */
+        priv->bos[i]->timestamp_write = timestamp;
+        priv->bos[i]->timestamp_any = timestamp;
         etna_bo_del_ext(priv->bos[i], priv->queue);
     }
     priv->nr_bos = 0;
@@ -306,7 +309,7 @@ int etna_flush(struct etna_cmd_stream *ctx_)
     }
     /***** Start fence mutex locked */
     /* Unreference bos */
-    unref_bos(ctx);
+    unref_bos(ctx, fence);
 
     /* Queue signal to signify when buffer is available again */
     if((status = etna_queue_signal(ctx->queue, ctx->cmdbufi[ctx->base.cur_buf].sig_id, VIV_WHERE_COMMAND)) != ETNA_OK)

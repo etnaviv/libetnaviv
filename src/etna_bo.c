@@ -457,7 +457,23 @@ void *etna_bo_map(struct etna_bo *bo)
 
 int etna_bo_cpu_prep(struct etna_bo *bo, uint32_t op)
 {
-    /* TODO */
+    if (!(op & DRM_ETNA_PREP_NOSYNC)) {
+        uint32_t ts = 0;
+        switch (op & (DRM_ETNA_PREP_READ | DRM_ETNA_PREP_WRITE)) {
+        case DRM_ETNA_PREP_READ:
+            /* Need to wait for writes to complete */
+            ts = bo->timestamp_write;
+            break;
+        case DRM_ETNA_PREP_READ|DRM_ETNA_PREP_WRITE:
+        case DRM_ETNA_PREP_WRITE:
+            /* Need to wait for both reads and writes to complete */
+            ts = bo->timestamp_any;
+            break;
+        }
+        if (ts) {
+            return viv_fence_finish(bo->conn, ts, 0xffffffff);
+        }
+    }
     return 0;
 }
 

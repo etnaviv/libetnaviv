@@ -44,6 +44,11 @@ struct etna_bo {
      */
     struct etna_cmd_stream *current_stream;
     uint32_t idx;
+
+    /* last written (by GPU) timestamp */
+    uint32_t timestamp_write;
+    /* last access (by GPU) timestamp */
+    uint32_t timestamp_any;
 };
 
 #define NUM_COMMAND_BUFFERS 5
