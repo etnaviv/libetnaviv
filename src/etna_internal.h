@@ -65,6 +65,12 @@ etna_cmd_stream_priv(struct etna_cmd_stream *stream)
     return (struct etna_cmd_stream_priv *)stream;
 }
 
+#define ETNA_SUBMIT_BO_READ             0x0001
+#define ETNA_SUBMIT_BO_WRITE            0x0002
+struct drm_etnaviv_gem_submit_bo {
+    __u32 flags;          /* in, mask of ETNA_SUBMIT_BO_x */
+};
+
 struct etna_cmd_stream_priv {
     struct etna_cmd_stream base;
     /* Stored current buffer id when building context */
@@ -82,6 +88,14 @@ struct etna_cmd_stream_priv {
     /* context reset notification */
     void (*reset_notify)(struct etna_cmd_stream *stream, void *priv);
     void *reset_notify_priv;
+
+    /* submit ioctl related tables: */
+    struct {
+        /* bo's table: */
+        struct drm_etnaviv_gem_submit_bo *bos;
+        uint32_t nr_bos, max_bos;
+    } submit;
+
     /* track bo's used in current submit */
     struct etna_bo **bos;
     uint32_t nr_bos, max_bos;

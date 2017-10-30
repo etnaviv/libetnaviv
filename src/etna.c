@@ -221,6 +221,9 @@ void etna_cmd_stream_del(struct etna_cmd_stream *ctx_)
     viv_user_signal_destroy(ctx->base.conn, ctx->sig_id);
     gpu_context_free(ctx);
 
+    free(ctx->submit.bos);
+    free(ctx->bos);
+
     ETNA_FREE(ctx);
 }
 
@@ -264,9 +267,9 @@ static void unref_bos(struct etna_cmd_stream_priv *priv, uint32_t timestamp)
         printf("%s: releasing bo %p at index %d\n", __func__, priv->bos[i], i);
 #endif
         priv->bos[i]->current_stream = NULL;
-        /* TODO actually remember reloc flags which ones to set */
-        priv->bos[i]->timestamp_write = timestamp;
         priv->bos[i]->timestamp_any = timestamp;
+        if (priv->submit.bos[i].flags & ETNA_SUBMIT_BO_WRITE)
+            priv->bos[i]->timestamp_write = timestamp;
         etna_bo_del_ext(priv->bos[i], priv->queue);
     }
     priv->nr_bos = 0;
@@ -408,8 +411,13 @@ static uint32_t append_bo(struct etna_cmd_stream *stream, struct etna_bo *bo)
 	struct etna_cmd_stream_priv *priv = etna_cmd_stream_priv(stream);
 	uint32_t idx;
 
+	idx = APPEND(&priv->submit, bos);
 	idx = APPEND(priv, bos);
+
+	priv->submit.bos[idx].flags = 0;
+
 	priv->bos[idx] = etna_bo_ref(bo);
+
 	return idx;
 }
 
@@ -439,6 +447,12 @@ static uint32_t bo2idx(struct etna_cmd_stream *stream, struct etna_bo *bo,
 		}
 	}
 	pthread_mutex_unlock(&idx_lock);
+
+	if (flags & ETNA_RELOC_READ)
+		priv->submit.bos[idx].flags |= ETNA_SUBMIT_BO_READ;
+	if (flags & ETNA_RELOC_WRITE)
+		priv->submit.bos[idx].flags |= ETNA_SUBMIT_BO_WRITE;
+
 	return idx;
 }
 
@@ -448,6 +462,7 @@ void etna_cmd_stream_reloc(struct etna_cmd_stream *cmdbuf, const struct etna_rel
     if (reloc && reloc->bo) {
         gpuaddr = etna_bo_gpu_address(reloc->bo) + reloc->offset;
         uint32_t idx = bo2idx(cmdbuf, reloc->bo, reloc->flags);
+        (void)idx;
 #ifdef DEBUG_BO
         printf("%s: added bo %p as idx %d\n", __func__, reloc->bo, idx);
 #endif
