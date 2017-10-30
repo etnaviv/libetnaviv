@@ -162,7 +162,7 @@ int viv_invoke(struct etna_device *conn, struct _gcsHAL_INTERFACE *cmd)
     cmd->hardwareType = (gceHARDWARE_TYPE)conn->hw_type;
 #endif
 #ifdef GCABI_HAS_ENGINE
-    cmd->engine = 65535;
+    cmd->engine = gcvENGINE_RENDER;
 #endif
     if(viv_ioctl(conn, IOCTL_GCHAL_INTERFACE, cmd, INTERFACE_SIZE) < 0)
         return -1;

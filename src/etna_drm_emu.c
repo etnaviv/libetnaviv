@@ -154,6 +154,7 @@ drmModeConnectorPtr drmModeGetConnector(int fd, uint32_t connectorId)
 {
     static uint32_t id = 0;
     drmModeConnectorPtr res = ETNA_CALLOC_STRUCT(_drmModeConnector);
+    res->connection = DRM_MODE_CONNECTED;
     res->connector_type = DRM_MODE_CONNECTOR_HDMIA;
     res->subpixel = DRM_MODE_SUBPIXEL_NONE;
 
@@ -240,5 +241,65 @@ int drmModeSetCrtc(int fd, uint32_t crtcId, uint32_t bufferId,
 		   drmModeModeInfoPtr mode)
 {
     printf("drmModeSetCrtc\n");
+    return 0;
+}
+
+drmModeFBPtr drmModeGetFB(int fd, uint32_t bufferId)
+{
+    drmModeFBPtr res = ETNA_CALLOC_STRUCT(_drmModeFB);
+    res->width = WIDTH;
+    res->height = HEIGHT;
+    /* ? */
+    return res;
+}
+
+void drmModeFreeFB( drmModeFBPtr ptr )
+{
+    ETNA_FREE(ptr);
+}
+
+int drmModeAddFB(int fd, uint32_t width, uint32_t height, uint8_t depth,
+			uint8_t bpp, uint32_t pitch, uint32_t bo_handle,
+			uint32_t *buf_id)
+{
+    *buf_id = 0;
+    return 0;
+}
+
+int drmModeAddFB2(int fd, uint32_t width, uint32_t height,
+			 uint32_t pixel_format, uint32_t bo_handles[4],
+			 uint32_t pitches[4], uint32_t offsets[4],
+			 uint32_t *buf_id, uint32_t flags)
+{
+    *buf_id = 0;
+    return 0;
+}
+
+int drmModeAddFB2WithModifiers(int fd, uint32_t width, uint32_t height,
+			       uint32_t pixel_format, uint32_t bo_handles[4],
+			       uint32_t pitches[4], uint32_t offsets[4],
+			       uint64_t modifier[4], uint32_t *buf_id, uint32_t flags)
+{
+    *buf_id = 0;
+    return 0;
+}
+
+int drmModeRmFB(int fd, uint32_t bufferId)
+{
+    return 0;
+}
+
+int drmModeSetCursor(int fd, uint32_t crtcId, uint32_t bo_handle, uint32_t width, uint32_t height)
+{
+    return 0;
+}
+
+int drmModeSetCursor2(int fd, uint32_t crtcId, uint32_t bo_handle, uint32_t width, uint32_t height, int32_t hot_x, int32_t hot_y)
+{
+    return 0;
+}
+
+int drmModeMoveCursor(int fd, uint32_t crtcId, int x, int y)
+{
     return 0;
 }
