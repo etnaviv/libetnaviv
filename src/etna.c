@@ -304,7 +304,7 @@ int etna_flush(struct etna_cmd_stream *ctx_)
          * that. In that case, we will exit from this function with only
          * this fence in the queue and an empty command buffer.
          */
-        if((status = etna_queue_signal(ctx->queue, signal, VIV_WHERE_PIXEL)) != ETNA_OK)
+        if((status = etna_queue_signal(ctx->queue, signal, VIV_WHERE_BLT)) != ETNA_OK)
         {
             fprintf(stderr, "%s: error %i queueing fence signal %i\n", __func__, status, signal);
             goto unlock_and_return_status;
@@ -367,8 +367,8 @@ void etna_cmd_stream_finish(struct etna_cmd_stream *ctx_)
 {
     struct etna_cmd_stream_priv *ctx = etna_cmd_stream_priv(ctx_);
     int status;
-    /* Submit event queue with SIGNAL, fromWhere=gcvKERNEL_PIXEL (wait for pixel engine to finish) */
-    if(etna_queue_signal(ctx->queue, ctx->sig_id, VIV_WHERE_PIXEL) != 0)
+    /* Submit event queue with SIGNAL, fromWhere=gcvKERNEL_BLT (wait for BLT engine to finish) */
+    if(etna_queue_signal(ctx->queue, ctx->sig_id, VIV_WHERE_BLT) != 0)
     {
         fprintf(stderr, "%s: Internal error while queing signal.\n", __func__);
         abort();
