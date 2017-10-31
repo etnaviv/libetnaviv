@@ -42,9 +42,6 @@
 /* Special command buffer ids */
 #define ETNA_NO_BUFFER (-1)
 
-/* Number of bytes in one command buffer */
-#define COMMAND_BUFFER_SIZE (0x8000)
-
 /* Constraints to command buffer layout:
  *
  * - Keep 8 words (32 bytes) at beginning of commit (for kernel to add optional PIPE switch)

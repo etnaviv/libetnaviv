@@ -122,6 +122,7 @@ struct etna_cmd_stream *etna_cmd_stream_new(struct etna_pipe *pipe, uint32_t siz
     struct etna_device *conn = pipe->gpu->dev;
     struct etna_cmd_stream_priv *ctx = ETNA_CALLOC_STRUCT(etna_cmd_stream_priv);
     ctx->base.conn = conn;
+    ctx->size = size;
     ctx->reset_notify = reset_notify;
     ctx->reset_notify_priv = priv;
 
@@ -149,7 +150,7 @@ struct etna_cmd_stream *etna_cmd_stream_new(struct etna_pipe *pipe, uint32_t siz
     for(int x=0; x<NUM_COMMAND_BUFFERS; ++x)
     {
         ctx->cmdbuf[x] = ETNA_CALLOC_STRUCT(_gcoCMDBUF);
-        if((ctx->cmdbufi[x].bo = etna_bo_new(conn, COMMAND_BUFFER_SIZE, DRM_ETNA_GEM_TYPE_CMD))==NULL)
+        if((ctx->cmdbufi[x].bo = etna_bo_new(conn, size, DRM_ETNA_GEM_TYPE_CMD))==NULL)
         {
 #ifdef DEBUG
             fprintf(stderr, "Error allocating host memory for command buffer\n");
@@ -193,7 +194,7 @@ struct etna_cmd_stream *etna_cmd_stream_new(struct etna_pipe *pipe, uint32_t siz
      * queueing of commands can be started.
      */
     ctx->base.cur_buf = ETNA_NO_BUFFER;
-    ctx->base.end = (COMMAND_BUFFER_SIZE - END_COMMIT_CLEARANCE)/4;
+    ctx->base.end = (ctx->size - END_COMMIT_CLEARANCE)/4;
 
     /* Make sure there is an active buffer */
     if((rv = switch_next_buffer(ctx)) != ETNA_OK)
@@ -239,7 +240,7 @@ void _etna_cmd_stream_reserve_internal(struct etna_cmd_stream *ctx_, size_t n)
 #ifdef DEBUG
     fprintf(stderr, "Buffer full\n");
 #endif
-    if((ctx->base.offset*4 + END_COMMIT_CLEARANCE) > COMMAND_BUFFER_SIZE)
+    if((ctx->base.offset*4 + END_COMMIT_CLEARANCE) > ctx->size)
     {
         fprintf(stderr, "%s: Command buffer overflow! This is likely a programming error in the GPU driver.\n", __func__);
         abort();

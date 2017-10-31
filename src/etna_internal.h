@@ -5,6 +5,11 @@
 #include "xf86atomic.h"
 #include "viv.h"
 
+/* Number of command buffers. This is the maximum number of flushes in-flight.
+ * Keep VIV_NUM_FENCE_SIGNALS up to date with this.
+ */
+#define NUM_COMMAND_BUFFERS 16
+
 struct etna_gpu {
     struct etna_device *dev;
     unsigned int core;
@@ -51,8 +56,6 @@ struct etna_bo {
     uint32_t timestamp_any;
 };
 
-#define NUM_COMMAND_BUFFERS 5
-
 struct etna_cmdbuf {
     /* sync signal for command buffer */
     int sig_id;
@@ -73,6 +76,8 @@ struct drm_etnaviv_gem_submit_bo {
 
 struct etna_cmd_stream_priv {
     struct etna_cmd_stream base;
+    /* Size */
+    uint32_t size;
     /* Stored current buffer id when building context */
     int stored_buf;
     /* Synchronization signal for finish() */
