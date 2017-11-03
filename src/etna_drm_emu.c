@@ -14,8 +14,40 @@
 #include <sys/ioctl.h>
 #include <linux/fb.h>
 
-#define WIDTH 1920
-#define HEIGHT 1080
+struct etna_drm_emu {
+    bool initialized;
+    unsigned width;
+    unsigned height;
+    unsigned stride;
+};
+
+static struct etna_drm_emu state;
+
+static void drm_emu_initialize()
+{
+    if (state.initialized)
+        return;
+    /* Query video mode once, at startup */
+    struct fb_fix_screeninfo fb_fix;
+    struct fb_var_screeninfo fb_var;
+    int fd = open("/dev/fb0", O_RDWR | O_CLOEXEC);
+    if (ioctl(fd, FBIOGET_FSCREENINFO, &fb_fix)) {
+        printf("%s: failed to run FBIOGET_FSCREENINFO ioctl\n", __func__);
+        abort();
+    }
+    if (ioctl(fd, FBIOGET_VSCREENINFO, &fb_var)) {
+        printf("%s: failed to run FBIOGET_VSCREENINFO ioctl\n", __func__);
+        abort();
+    }
+    state.initialized = true;
+    state.width = fb_var.xres;
+    state.height = fb_var.yres;
+    state.stride = fb_fix.line_length;
+    printf("%s: %dx%d stride %d\n", __func__, state.width, state.height, state.stride);
+    assert(!(state.stride & 0x40)); /* PE framebuffer alignment */
+    close(fd);
+}
+
 /* Just enough to make Mesa work */
 
 drmVersionPtr drmGetVersion(int fd)
@@ -42,18 +74,17 @@ char *drmGetDeviceNameFromFd2(int fd)
 
 int drmIoctl(int fd, unsigned long request, void *arg)
 {
+    drm_emu_initialize();
     switch(request) {
     case DRM_IOCTL_MODE_CREATE_DUMB: {
             struct drm_mode_create_dumb *create_dumb = (struct drm_mode_create_dumb*)arg;
-            struct fb_fix_screeninfo fb_fix;
             printf("DRM_IOCTL_MODE_CREATE_DUMB %dx%dx%d\n", create_dumb->width, create_dumb->height, create_dumb->bpp);
-            int fd = open("/dev/fb0", O_RDWR | O_CLOEXEC);
-            if (ioctl(fd, FBIOGET_FSCREENINFO, &fb_fix)) {
-                    printf("Error: failed to run FBIOGET_FSCREENINFO ioctl\n");
-                close(fd);
+            if (create_dumb->width != state.width) {
+                printf("%s: Allocation of non-framebuffer-width surface not supported\n", __func__);
                 return -1;
             }
-            create_dumb->pitch = fb_fix.line_length;
+            int fd = open("/dev/fb0", O_RDWR | O_CLOEXEC);
+            create_dumb->pitch = state.stride;
             /* Fake "dmabuf" spanning the console */
             create_dumb->handle = fd;
             return 0;
@@ -144,8 +175,9 @@ int drmModeConnectorSetProperty(int fd, uint32_t connector_id, uint32_t property
 
 static void fill_mode(drmModeModeInfoPtr mode)
 {
-    mode->hdisplay = WIDTH;
-    mode->vdisplay = HEIGHT;
+    drm_emu_initialize();
+    mode->hdisplay = state.width;
+    mode->vdisplay = state.height;
     mode->vrefresh = 60;
     mode->type = DRM_MODE_TYPE_BUILTIN | DRM_MODE_TYPE_DEFAULT;
 }
@@ -176,10 +208,11 @@ void drmModeFreeConnector( drmModeConnectorPtr ptr )
 drmModeCrtcPtr drmModeGetCrtc(int fd, uint32_t crtcId)
 {
     drmModeCrtcPtr res = ETNA_CALLOC_STRUCT(_drmModeCrtc);
+    drm_emu_initialize();
     res->crtc_id = 0;
     res->buffer_id = 0;
-    res->width = WIDTH;
-    res->height = HEIGHT;
+    res->width = state.width;
+    res->height = state.height;
     res->mode_valid = 1;
     fill_mode(&res->mode);
     return res;
@@ -218,6 +251,7 @@ drmModeResPtr drmModeGetResources(int fd)
 {
     static uint32_t id = 0;
     drmModeResPtr res = ETNA_CALLOC_STRUCT(_drmModeRes);
+    drm_emu_initialize();
     res->count_fbs = 1;
     res->fbs = &id;
     res->count_crtcs = 1;
@@ -226,8 +260,8 @@ drmModeResPtr drmModeGetResources(int fd)
     res->connectors = &id;
     res->count_encoders = 1;
     res->encoders = &id;
-    res->min_width = res->max_width = WIDTH;
-    res->min_height = res->max_height = HEIGHT;
+    res->min_width = res->max_width = state.width;
+    res->min_height = res->max_height = state.height;
     return res;
 }
 
@@ -247,8 +281,9 @@ int drmModeSetCrtc(int fd, uint32_t crtcId, uint32_t bufferId,
 drmModeFBPtr drmModeGetFB(int fd, uint32_t bufferId)
 {
     drmModeFBPtr res = ETNA_CALLOC_STRUCT(_drmModeFB);
-    res->width = WIDTH;
-    res->height = HEIGHT;
+    drm_emu_initialize();
+    res->width = state.width;
+    res->height = state.height;
     /* ? */
     return res;
 }
