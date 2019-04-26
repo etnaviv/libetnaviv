@@ -27,10 +27,10 @@
 #ifndef H_ETNA
 #define H_ETNA
 
-#include <common.xml.h>
-#include <cmdstream.xml.h>
-#include <etna_util.h>
-#include <viv.h>
+#include "common.xml.h"
+#include "cmdstream.xml.h"
+#include "etna_util.h"
+#include "viv.h"
 
 #include <stdint.h>
 #include <stdlib.h>
